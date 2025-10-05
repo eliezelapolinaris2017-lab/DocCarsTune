@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Doctor Car Pro — OBD2 (ELM327)</title>
+<meta name="theme-color" content="#0d0f15">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0d0f15; --card:#121523; --ink:#e7eaf3; --muted:#9aa1b2;
+  --pri:#00d1b2; --pri2:#14b8a6; --acc:#7aa2f7; --warn:#f59e0b; --danger:#ef4444; --ok:#22c55e;
+  --btn:#1a1f33; --outline:#262b45; --shadow:0 10px 24px rgba(0,0,0,.35);
+  --radius:14px; --gap:14px; --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+*{box-sizing:border-box} html,body{height:100%} body{
+  margin:0; background:linear-gradient(180deg,#0b0d13 0%, #0e111a 60%, #0d0f15 100%);
+  color:var(--ink); font-family:var(--font); letter-spacing:.2px;
+}
+a{color:var(--acc); text-decoration:none}
+header{position:sticky; top:0; z-index:50; backdrop-filter: blur(8px); background:rgba(10,12,18,.6); border-bottom:1px solid var(--outline)}
+.topbar{display:flex; align-items:center; gap:12px; padding:10px 14px}
+.logoWrap{display:flex; align-items:center; gap:10px}
+.logoWrap img{width:36px; height:36px; border-radius:8px; object-fit:cover; background:#000}
+.brand{font-weight:700; letter-spacing:.5px}
+.badge{font-size:12px; padding:2px 8px; border:1px solid var(--outline); border-radius:999px; color:var(--muted)}
+.grow{flex:1}
+.container{max-width:1100px; margin:18px auto; padding:0 14px}
+.card{background:linear-gradient(180deg,#121626 0%, #0f1322 100%); border:1px solid var(--outline); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px; margin-bottom:16px}
+.h{display:flex; align-items:center; gap:10px; margin-bottom:10px}
+.h h2{margin:0; font-size:18px}
+.row{display:grid; grid-template-columns: repeat(2,1fr); gap:var(--gap)}
+@media (max-width:900px){ .row{grid-template-columns:1fr} }
+label{font-size:13px; color:var(--muted); display:block; margin-bottom:6px}
+input,select,textarea{width:100%; padding:10px 12px; background:#0f1323; color:var(--ink); border:1px solid var(--outline); border-radius:10px; outline:none}
+button.primary{ background:linear-gradient(180deg,var(--pri) 0%, var(--pri2) 100%); color:#02130f; font-weight:700; border:0; border-radius:12px; padding:10px 12px; cursor:pointer }
+button.ghost{ background:transparent; border:1px solid var(--outline); border-radius:10px; color:var(--ink); padding:9px 12px; cursor:pointer }
+.kpi{display:flex; gap:12px; flex-wrap:wrap}
+.kpi .pill{border:1px solid var(--outline); border-radius:12px; padding:8px 12px; color:var(--muted); background:#0e1220}
+.table{width:100%; border-collapse:collapse; font-size:14px}
+.table th,.table td{border-bottom:1px solid var(--outline); padding:10px 8px; text-align:left}
+.mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace}
+.ok{color:var(--ok)} .warn{color:var(--warn)} .danger{color:var(--danger)}
+footer{opacity:.7; font-size:12px; text-align:center; padding:30px 0}
+.hidden{display:none!important}
+.flex{display:flex; gap:10px; align-items:center}
+.right{margin-left:auto}
+hr{border:0; border-top:1px solid var(--outline); opacity:.5; margin:10px 0}
+.tag{display:inline-block; border:1px solid var(--outline); padding:4px 8px; border-radius:999px; color:var(--muted); font-size:12px}
+
+/* ====== HOME estilo LAUNCH ====== */
+.homeGrid{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:16px;
+}
+@media (max-width:900px){ .homeGrid{grid-template-columns:repeat(2,1fr)} }
+.tile{
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+  padding:18px; min-height:140px; border-radius:16px;
+  background:linear-gradient(180deg,#151a2d 0%, #101426 100%);
+  border:1px solid #1f243b; cursor:pointer; box-shadow:var(--shadow);
+  transition: transform .08s ease, outline .08s ease, background .2s ease;
+  text-align:center; user-select:none
+}
+.tile:active{ transform: scale(.98); }
+.tile:hover{ outline:2px solid var(--pri); }
+.tile .iconWrap{
+  width:64px; height:64px; border-radius:14px; display:grid; place-items:center;
+  background:#0d1326; border:1px solid #222741;
+}
+.tile svg{ width:36px; height:36px; }
+.tile .title{ font-weight:700; letter-spacing:.3px }
+.tile .sub{ font-size:12px; color:var(--muted) }
+
+/* Ocultamos tabs clásicas */
+nav{display:none}
+.brandLogo{height:44px; width:100%; object-fit:contain; filter:contrast(1.05)}
+.notice{padding:10px 12px; border:1px dashed var(--outline); border-radius:10px; color:var(--muted)}
+.modal{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.55); z-index:100}
+.sheet{width:min(560px,92vw); background:#0f1323; border:1px solid var(--outline); border-radius:14px; padding:16px}
+.center{text-align:center}
+.canvasWrap{background:#0f1323; border:1px solid var(--outline); border-radius:12px; padding:8px}
+
+/* ====== Botón fijo "Regresar" en header ====== */
+.backBtn{
+  display:none; /* se muestra programáticamente fuera de Home */
+  align-items:center; gap:8px; padding:8px 10px;
+  border:1px solid var(--outline); border-radius:10px; background:var(--btn);
+  color:var(--ink); cursor:pointer;
+}
+.backBtn svg{ width:18px; height:18px }
+</style>
+</head>
+<body>
+<header>
+  <div class="topbar">
+    <button id="btnBackHome" class="backBtn" title="Regresar al menú">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+      Menú
+    </button>
+    <div class="logoWrap">
+      <img id="appLogo" alt="Logo">
+      <div>
+        <div class="brand">Doctor Car Pro</div>
+        <div class="badge">OBD-II • ELM327</div>
+      </div>
+    </div>
+    <span class="grow"></span>
+    <div class="flex">
+      <span id="connStatus" class="tag">Desconectado</span>
+      <button id="btnConnect" class="primary">Conectar</button>
+      <button id="btnDisconnect" class="ghost hidden">Desconectar</button>
+    </div>
+  </div>
+</header>
+
+<div class="container">
+  <!-- ====== HOME (MENÚ PRINCIPAL) ====== -->
+  <section id="page-home" class="card">
+    <div class="h"><h2>Menú principal</h2><span class="tag">Seleccione una función</span></div>
+    <div class="homeGrid" id="homeGrid">
+      <div class="tile" data-go="scan">
+        <div class="iconWrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h16M4 12h16M4 17h16"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg>
+        </div>
+        <div class="title">Diagnóstico</div><div class="sub">Leer / borrar DTC</div>
+      </div>
+      <div class="tile" data-go="dash">
+        <div class="iconWrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 12h4l2 4h4l2-4h2a2 2 0 0 0 2-2V8a3 3 0 0 0-3-3H7A3 3 0 0 0 4 8v2"/><circle cx="9" cy="16.5" r="1.5"/><circle cx="15" cy="16.5" r="1.5"/></svg>
+        </div>
+        <div class="title">OBD-II</div><div class="sub">Panel / Conexión</div>
+      </div>
+      <div class="tile" data-go="im">
+        <div class="iconWrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 12l4 4 8-8"/><rect x="3" y="3" width="18" height="18" rx="3"/></svg>
+        </div>
+        <div class="title">I/M</div><div class="sub">Monitores</div>
+      </div>
+      <div class="tile" data-go="scan" data-action="focus-clear">
+        <div class="iconWrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20 7v6a7 7 0 1 1-2.05-4.95L20 9"/></svg>
+        </div>
+        <div class="title">Reset</div><div class="sub">Borrar códigos</div>
+      </div>
+      <div class="tile" data-go="live" data-action="quick">
+        <div class="iconWrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 7V5m12 2V5M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><path d="M11 13l-2 4h4l-2 4"/></svg>
+        </div>
+        <div class="title">Batería</div><div class="sub">Lectura rápida</div>
+      </div>
+      <div class="tile" data-go="charts">
+        <div class="iconWrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 3v18h18"/><path d="M7 13l3 3 7-7"/></svg>
+        </div>
+        <div class="title">Datos</div><div class="sub">Gráficas / reporte</div>
+      </div>
+      <div class="tile" data-go="charts" data-action="focus-pdf">
+        <div class="iconWrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16v12H4z"/><path d="M4 6l8 6 8-6"/></svg>
+        </div>
+        <div class="title">Mail</div><div class="sub">Generar PDF</div>
+      </div>
+      <div class="tile" data-go="upgrade">
+        <div class="iconWrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1A2 2 0 1 1 7.1 3.5l.1.1a1.6 1.6 0 0 0 1.8.3 1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1A2 2 0 1 1 20.5 7l-.1.1a1.6 1.6 0 0 0-.3 1.8 1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.5 1z"/></svg>
+        </div>
+        <div class="title">Upgrade</div><div class="sub">Soporte / contacto</div>
+      </div>
+      <div class="tile" data-go="settings" data-action="focus-theme">
+        <div class="iconWrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5 5l2.2 2.2M16.8 16.8L19 19M5 19l2.2-2.2M16.8 7.2L19 5"/><circle cx="12" cy="12" r="4"/></svg>
+        </div>
+        <div class="title">Ajustes</div><div class="sub">Tema y usuarios</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== SECCIONES ====== -->
+
+  <!-- Panel -->
+  <section id="page-dash" class="card hidden">
+    <div class="h"><h2>Panel</h2><span class="tag">Estado general</span></div>
+    <div class="kpi">
+      <div class="pill">Protocolo: <b id="kProto" class="mono">—</b></div>
+      <div class="pill">VIN: <b id="kVIN" class="mono">—</b></div>
+      <div class="pill">ECU: <b id="kECU" class="mono">—</b></div>
+      <div class="pill">PIDs 0x00-0x20: <b id="kPID" class="mono">—</b></div>
+    </div>
+    <hr/>
+    <div class="row">
+      <div class="card">
+        <div class="h"><h2>Conexión</h2></div>
+        <label>Transporte</label>
+        <div class="flex">
+          <select id="transport">
+            <option value="auto">Auto (Web Serial/BLE)</option>
+            <option value="serial">Web Serial (USB)</option>
+            <option value="ble">Web Bluetooth (BLE UART)</option>
+            <option value="demo">Demo (sin hardware)</option>
+          </select>
+          <button id="btnInit" class="ghost">Inicializar ECU</button>
+        </div>
+        <div style="margin-top:10px" class="notice" id="compatNote"></div>
+        <hr/>
+        <label>Consola</label>
+        <textarea id="console" rows="10" class="mono" readonly></textarea>
+        <div class="flex" style="margin-top:8px">
+          <button id="btnClearLog" class="ghost">Limpiar</button>
+          <span class="right" style="color:var(--muted)">Consejo: usa Chrome/Edge en laptop para Web Serial.</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="h"><h2>Acciones rápidas</h2></div>
+        <div class="flex" style="flex-wrap:wrap">
+          <button class="ghost" data-at="ATZ">ATZ</button>
+          <button class="ghost" data-at="ATE0">ATE0</button>
+          <button class="ghost" data-at="ATL0">ATL0</button>
+          <button class="ghost" data-at="ATS0">ATS0</button>
+          <button class="ghost" data-at="ATH1">ATH1</button>
+          <button class="ghost" data-at="ATSP0">ATSP0 (Auto)</button>
+          <button class="ghost" data-req="0100">0100 (PIDs)</button>
+          <button class="ghost" id="btnReadVIN">0902 (VIN)</button>
+        </div>
+        <hr/>
+        <div class="h"><h2>Lecturas clave</h2></div>
+        <table class="table">
+          <tbody>
+            <tr><td>RPM (010C)</td><td class="mono" id="dRPM">—</td></tr>
+            <tr><td>Velocidad (010D)</td><td class="mono" id="dSPD">—</td></tr>
+            <tr><td>Temp. Refrigerante (0105)</td><td class="mono" id="dECT">—</td></tr>
+            <tr><td>Throttle (0111)</td><td class="mono" id="dTHR">—</td></tr>
+            <tr><td>Códigos DTC activos</td><td class="mono" id="dDTC">—</td></tr>
+          </tbody>
+        </table>
+        <div class="flex">
+          <button id="btnQuickPoll" class="primary">Leer rápido (5s)</button>
+          <button id="btnStopPoll" class="ghost">Detener</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Escanear DTC -->
+  <section id="page-scan" class="card hidden">
+    <div class="h"><h2>Escanear y borrar DTC</h2><span class="tag">Modo 03 / 04</span></div>
+    <div class="flex" style="flex-wrap:wrap">
+      <button id="btnScanDTC" class="primary">Leer DTC (03)</button>
+      <button id="btnClearDTC" class="ghost">Borrar DTC (04)</button>
+      <button id="btnReadPending" class="ghost">Pendientes (07)</button>
+      <button id="btnReadPermanent" class="ghost">Permanentes (0A)</button>
+    </div>
+    <hr/>
+    <div id="dtcList"></div>
+  </section>
+
+  <!-- Live Data -->
+  <section id="page-live" class="card hidden">
+    <div class="h"><h2>Datos en vivo</h2><span class="tag">Modo 01 PIDs</span></div>
+    <div class="grid4">
+      <div class="card"><div class="h"><h2>RPM</h2></div><div class="mono" id="liveRPM" style="font-size:22px">—</div></div>
+      <div class="card"><div class="h"><h2>Velocidad</h2></div><div class="mono" id="liveSPD" style="font-size:22px">—</div></div>
+      <div class="card"><div class="h"><h2>ECT</h2></div><div class="mono" id="liveECT" style="font-size:22px">—</div></div>
+      <div class="card"><div class="h"><h2>Throttle</h2></div><div class="mono" id="liveTHR" style="font-size:22px">—</div></div>
+    </div>
+    <div class="flex" style="margin-top:10px; flex-wrap:wrap">
+      <button id="btnStartLive" class="primary">Iniciar streaming</button>
+      <button id="btnStopLive" class="ghost">Detener</button>
+      <select id="liveRate" style="width:auto">
+        <option value="300">300 ms</option>
+        <option value="500" selected>500 ms</option>
+        <option value="800">800 ms</option>
+        <option value="1000">1000 ms</option>
+      </select>
+      <span class="tag">Reúna datos para las gráficas y el PDF</span>
+    </div>
+    <div class="notice">Consejo: mantén <span class="mono">ATE0, ATL0, ATS0, ATSP0</span> para menor latencia.</div>
+  </section>
+
+  <!-- Reportes & Gráficas -->
+  <section id="page-charts" class="card hidden">
+    <div class="h"><h2>Reportes & Gráficas</h2><span class="tag">Tiempo real + PDF</span></div>
+    <div class="row">
+      <div class="card">
+        <h3 style="margin-top:0">Gráficas en tiempo real</h3>
+        <div class="canvasWrap"><canvas id="chartRPM" height="120"></canvas></div>
+        <div class="canvasWrap" style="margin-top:10px"><canvas id="chartSPD" height="120"></canvas></div>
+        <div class="canvasWrap" style="margin-top:10px"><canvas id="chartECT" height="120"></canvas></div>
+        <div class="canvasWrap" style="margin-top:10px"><canvas id="chartTHR" height="120"></canvas></div>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">Reporte PDF tipo scanner</h3>
+        <label>Cliente</label><input id="pdfCliente" placeholder="Nombre del cliente">
+        <label>Notas</label><textarea id="pdfNotas" rows="6" placeholder="Observaciones del diagnóstico..."></textarea>
+        <div class="flex" style="margin-top:10px; flex-wrap:wrap">
+          <button id="btnGenPDF" class="primary">Generar PDF</button>
+          <button id="btnClearSeries" class="ghost">Limpiar series</button>
+        </div>
+        <div class="notice">El PDF incluirá logo, VIN, protocolo, códigos DTC, lecturas actuales y mini-gráficas.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Freeze Frame -->
+  <section id="page-ff" class="card hidden">
+    <div class="h"><h2>Freeze Frame</h2><span class="tag">Modo 02</span></div>
+    <button id="btnFF" class="ghost">Leer Freeze Frame (02)</button>
+    <pre class="mono" id="ffOut">—</pre>
+  </section>
+
+  <!-- I/M readiness -->
+  <section id="page-im" class="card hidden">
+    <div class="h"><h2>Monitores I/M</h2><span class="tag">0101 / 01C0</span></div>
+    <button id="btnIM" class="ghost">Leer estado (0101)</button>
+    <pre class="mono" id="imOut">—</pre>
+  </section>
+
+  <!-- Vehicle Info -->
+  <section id="page-info" class="card hidden">
+    <div class="h"><h2>Información del vehículo</h2><span class="tag">Modo 09</span></div>
+    <div class="flex" style="flex-wrap:wrap">
+      <button id="btnVIN" class="ghost">VIN (0902)</button>
+      <button id="btnCALID" class="ghost">CALID/CVN (0904/0906)</button>
+      <button id="btnECUName" class="ghost">Nombre ECU (090A)</button>
+    </div>
+    <pre class="mono" id="infoOut">—</pre>
+  </section>
+
+  <!-- Brands -->
+  <section id="page-brands" class="card hidden">
+    <div class="h"><h2>Marcas principales</h2><span class="tag">EE. UU. / Japón</span></div>
+    <div class="grid4" id="brandGrid"></div>
+    <div class="notice">Descripciones DTC son genéricas OBD-II; los códigos específicos pueden variar por fabricante.</div>
+  </section>
+
+  <!-- Settings -->
+  <section id="page-settings" class="card hidden">
+    <div class="h"><h2>Configuración</h2><span class="tag">Tema, logo y acceso</span></div>
+    <div class="row">
+      <div class="card">
+        <h3 style="margin-top:0">Personalización visual</h3>
+        <label>Subir logo</label><input type="file" id="logoFile" accept="image/*"/>
+        <label>Color primario</label><input type="color" id="colorPri" value="#00d1b2" />
+        <label>Color acento</label><input type="color" id="colorAcc" value="#7aa2f7" />
+        <div class="flex" style="margin-top:10px">
+          <button id="btnSaveTheme" class="primary">Guardar tema</button>
+          <button id="btnResetTheme" class="ghost">Restablecer</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">Usuarios</h3>
+        <div class="notice">Login local: crea tu usuario. Las credenciales se guardan <b>solo</b> en este dispositivo (LocalStorage, hash).</div>
+        <label>Usuario</label><input id="uUser" placeholder="admin"/>
+        <label>Contraseña</label><input id="uPass" type="password" placeholder="••••••••"/>
+        <div class="flex" style="margin-top:10px">
+          <button id="btnRegister" class="ghost">Crear / Actualizar</button>
+          <button id="btnLogin" class="primary">Iniciar sesión</button>
+          <button id="btnLogout" class="ghost right">Cerrar sesión</button>
+        </div>
+        <div id="authState" class="tag" style="margin-top:10px">No autenticado</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Upgrade (nuevo, con WhatsApp) -->
+  <section id="page-upgrade" class="card hidden">
+    <div class="h"><h2>Soporte y mejoras</h2><span class="tag">Contacto directo</span></div>
+    <p>¿Necesitas una función nueva, soporte o integración? Comunícate por WhatsApp con el desarrollador:</p>
+    <a class="whatsLink" href="https://wa.me/17876643079" target="_blank" rel="noopener" style="
+      display:inline-flex; align-items:center; gap:10px; padding:12px 16px;
+      border-radius:12px; background:#1f7a1f; color:white; text-decoration:none; font-weight:700;">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M20.52 3.48A11.8 11.8 0 0012.06 0C5.56 0 .28 5.28.28 11.78c0 2.08.54 4.12 1.56 5.92L0 24l6.45-1.78a11.7 11.7 0 005.61 1.44h.01c6.5 0 11.78-5.28 11.78-11.78 0-3.15-1.23-6.12-3.33-8.4zM12.07 21.3h-.01a9.5 9.5 0 01-4.84-1.33l-.35-.21-3.83 1.06 1.02-3.73-.23-.38a9.5 9.5 0 01-1.46-5.12c0-5.25 4.27-9.52 9.52-9.52 2.55 0 4.95 1 6.76 2.82a9.47 9.47 0 012.78 6.7c-.01 5.25-4.28 9.51-9.56 9.51zm5.49-7.13c-.3-.15-1.75-.86-2.02-.96-.27-.1-.46-.15-.66.15-.2.3-.76.96-.93 1.16-.17.2-.34.22-.64.07-.3-.15-1.27-.47-2.42-1.5-.9-.8-1.5-1.78-1.68-2.08-.17-.3-.02-.46.13-.61.13-.13.3-.34.45-.52.15-.18.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.66-1.59-.9-2.18-.24-.57-.48-.5-.66-.51l-.56-.01c-.2 0-.52.07-.78.37-.27.3-1.03 1-1.03 2.43 0 1.43 1.06 2.81 1.2 3.01.15.2 2.08 3.18 5.04 4.46.7.3 1.24.48 1.66.62.7.22 1.33.19 1.83.12.56-.08 1.75-.72 2-1.42.25-.7.25-1.3.17-1.43-.07-.13-.27-.2-.57-.36z"/></svg>
+      WhatsApp: 787-664-3079
+    </a>
+    <div class="notice" style="margin-top:12px">Horario preferido: 9am–6pm (GMT-4). ¡Escríbeme y coordinamos!</div>
+  </section>
+
+  <!-- Help -->
+  <section id="page-help" class="card hidden">
+    <div class="h"><h2>Ayuda rápida</h2><span class="tag">Protocolos SAE J1850 • ISO 14230 • ISO 15765 (CAN)</span></div>
+    <ul>
+      <li>Usa <b>Web Serial</b> (Chrome/Edge desktop) con ELM327 USB/CDC.</li>
+      <li>O <b>Web Bluetooth</b> con adaptadores <i>BLE UART</i> compatibles.</li>
+      <li>Secuencia típica: <span class="mono">ATZ → ATE0 → ATL0 → ATS0 → ATSP0 → 0100</span></li>
+      <li>DTC: <span class="mono">03</span> lee, <span class="mono">04</span> borra.</li>
+      <li>VIN: <span class="mono">0902</span>. I/M: <span class="mono">0101</span>. Freeze: <span class="mono">02</span>.</li>
+    </ul>
+    <div class="notice">iPhone/iPad: Safari no expone Web Serial y tiene Web Bluetooth limitado. Usa “Demo” o una laptop.</div>
+  </section>
+</div>
+
+<footer>© <span id="year"></span> Doctor Car Pro. Lectura genérica OBD-II (no sustituye diagnóstico del fabricante).</footer>
+
+<!-- Login modal -->
+<div id="loginModal" class="modal hidden">
+  <div class="sheet">
+    <div class="h"><h2>Bienvenido a Doctor Car Pro</h2></div>
+    <p>Crea tu usuario local para proteger configuración y datos.</p>
+    <div class="row">
+      <div><label>Usuario</label><input id="mUser" placeholder="admin"></div>
+      <div><label>Contraseña</label><input id="mPass" type="password" placeholder="••••••••"></div>
+    </div>
+    <div class="flex" style="margin-top:12px">
+      <button id="mCreate" class="primary">Crear y entrar</button>
+      <button id="mLater" class="ghost right">Luego</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   Doctor Car Pro — HOME + botón regresar + WhatsApp
+   ========================================================= */
+const $ = sel => document.querySelector(sel);
+const $$ = sel => [...document.querySelectorAll(sel)];
+const log = (t) => { const c=$("#console"); if(!c) return; c.value += (t.endsWith("\\n")? t : (t+"\\n")); c.scrollTop=c.scrollHeight; };
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const BRAND_KEY='dcp.brand', AUTH_KEY='dcp.auth', PREF_KEY='dcp.prefs';
+
+const S = {
+  transport:'auto', conn:null, reader:null, writer:null,
+  bleDev:null, bleTx:null, bleRx:null, serialPort:null,
+  buffer:'', liveTimer:null, quickTimer:null, logged:false,
+  dtcLast:[], t0: Date.now(), series: { t:[], rpm:[], spd:[], ect:[], thr:[] }, maxPoints: 300, charts:{}
+};
+
+// ====== Router + botón regresar ======
+const pages = ['home','dash','scan','live','charts','ff','im','info','brands','settings','upgrade','help'];
+function toggleBackBtn(show){ $("#btnBackHome").style.display = show ? 'inline-flex' : 'none'; }
+function go(p){
+  pages.forEach(id => $("#page-"+id)?.classList.add('hidden'));
+  $("#page-"+p)?.classList.remove('hidden');
+  toggleBackBtn(p !== 'home'); // mostrar u ocultar regresar
+  window.scrollTo({top:0, behavior:'instant'});
+  // guarda última página por si quieres restaurar en el futuro
+  const prefs = loadPrefs(); prefs.last = p; savePrefs(prefs);
+}
+go('home');
+$("#btnBackHome").addEventListener('click', ()=> go('home'));
+
+$("#homeGrid").addEventListener('click', (e)=>{
+  const tile = e.target.closest('.tile'); if(!tile) return;
+  const to = tile.dataset.go;
+  const action = tile.dataset.action || '';
+  go(to);
+  if (to==='scan' && action==='focus-clear') { setTimeout(()=> $("#btnClearDTC")?.focus(), 50); }
+  if (to==='charts' && action==='focus-pdf') { setTimeout(()=> $("#btnGenPDF")?.focus(), 50); }
+  if (to==='settings' && action==='focus-theme') { setTimeout(()=> $("#colorPri")?.scrollIntoView({behavior:'smooth',block:'center'}),100); }
+  if (to==='live' && action==='quick') { $("#btnQuickPoll")?.click(); }
+});
+
+// ====== Compat / branding ======
+function showCompat(){
+  const b=[]; b.push(('serial' in navigator)?'Web Serial disponible':'Web Serial no disponible');
+  b.push((navigator.bluetooth)?'Web Bluetooth disponible':'Web Bluetooth no disponible');
+  $("#compatNote") && ($("#compatNote").innerHTML = b.join(' • ') + '.');
+}
+showCompat();
+
+function blobToDataURL(buf, type){ return new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(new Blob([buf],{type})); }); }
+function loadBrand(){
+  const x = JSON.parse(localStorage.getItem(BRAND_KEY)||'{}');
+  if (x.logo) $("#appLogo").src = x.logo; else $("#appLogo").src = 'data:image/svg+xml;utf8,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="100%" height="100%" fill="black"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" fill="#00d1b2" font-family="Arial" font-size="34">DCP</text></svg>`);
+  if (x.pri) document.documentElement.style.setProperty('--pri', x.pri);
+  if (x.acc) document.documentElement.style.setProperty('--acc', x.acc);
+}
+loadBrand();
+$("#logoFile")?.addEventListener('change', async e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const b = await f.arrayBuffer(); const img = await blobToDataURL(b, f.type);
+  const brand = JSON.parse(localStorage.getItem(BRAND_KEY)||'{}'); brand.logo = img;
+  localStorage.setItem(BRAND_KEY, JSON.stringify(brand)); loadBrand();
+});
+$("#colorPri")?.addEventListener('input', e=> document.documentElement.style.setProperty('--pri', e.target.value));
+$("#colorAcc")?.addEventListener('input', e=> document.documentElement.style.setProperty('--acc', e.target.value));
+$("#btnSaveTheme")?.addEventListener('click', ()=>{ const brand=JSON.parse(localStorage.getItem(BRAND_KEY)||'{}'); brand.pri=$("#colorPri").value; brand.acc=$("#colorAcc").value; localStorage.setItem(BRAND_KEY, JSON.stringify(brand)); });
+$("#btnResetTheme")?.addEventListener('click', ()=>{ localStorage.removeItem(BRAND_KEY); loadBrand(); });
+$("#year").textContent = new Date().getFullYear();
+
+// ====== Preferencias (persistencia adicional) ======
+function loadPrefs(){ return JSON.parse(localStorage.getItem(PREF_KEY)||'{}'); }
+function savePrefs(p){ localStorage.setItem(PREF_KEY, JSON.stringify(p)); }
+(function restorePrefs(){
+  const p = loadPrefs();
+  if (p.transport) $("#transport") && ($("#transport").value = p.transport);
+})();
+
+// ====== Login simple ======
+function hash(s){ let h=0; for(let i=0;i<s.length;i++){ h=(h<<5)-h + s.charCodeAt(i); h|=0; } return 'H'+(h>>>0).toString(16); }
+function authState(){ const a=JSON.parse(localStorage.getItem(AUTH_KEY)||'{}'); S.logged=!!a.user; $("#authState") && ($("#authState").textContent=S.logged?`Autenticado como ${a.user}`:'No autenticado'); }
+authState();
+$("#btnRegister")?.addEventListener('click',()=>{ const u=$("#uUser").value.trim(), p=$("#uPass").value; if(!u||!p) return alert('Usuario y contraseña requeridos'); localStorage.setItem(AUTH_KEY, JSON.stringify({user:u, pass:hash(p)})); authState(); alert('Usuario guardado'); });
+$("#btnLogin")?.addEventListener('click',()=>{ const u=$("#uUser").value.trim(), p=$("#uPass").value; const a=JSON.parse(localStorage.getItem(AUTH_KEY)||'{}'); if(a.user===u && a.pass===hash(p)){ S.logged=true; $("#loginModal").classList.add('hidden'); authState(); } else alert('Credenciales inválidas'); });
+$("#btnLogout")?.addEventListener('click',()=>{ localStorage.removeItem(AUTH_KEY); authState(); });
+$("#mCreate")?.addEventListener('click',()=>{ const u=$("#mUser").value.trim(), p=$("#mPass").value; if(!u||!p) return alert('Completa usuario y contraseña'); localStorage.setItem(AUTH_KEY, JSON.stringify({user:u, pass:hash(p)})); $("#loginModal").classList.add('hidden'); authState(); });
+$("#mLater")?.addEventListener('click',()=> $("#loginModal").classList.add('hidden'));
+if (!localStorage.getItem(AUTH_KEY)) $("#loginModal")?.classList.remove('hidden');
+
+// ====== Marcas ======
+const BRANDS=["Ford","Chevrolet","Dodge","Jeep","Toyota","Honda","Nissan","Mazda","Subaru","Lexus","Acura","Infiniti","Mitsubishi","Hyundai","Kia","GM"];
+const brandGrid=$("#brandGrid");
+if (brandGrid) BRANDS.forEach(b=>{ const svg=`data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='300' height='100'><rect width='100%' height='100%' fill='black'/><text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' fill='#7aa2f7' font-family='Arial' font-size='28'>${b}</text></svg>`)}`; const d=document.createElement('div'); d.className='card'; d.innerHTML=`<img class="brandLogo" src="${svg}" alt="${b}"><div class="notice">Códigos específicos de ${b}: consultar manual del fabricante.</div>`; brandGrid.appendChild(d); });
+
+// ====== Transporte ======
+const Transport = {
+  async connect(kind){
+    S.transport=kind||($("#transport")?.value||'auto');
+    // persistimos transporte
+    const prefs=loadPrefs(); prefs.transport=S.transport; savePrefs(prefs);
+
+    if (S.transport==='serial' || (S.transport==='auto' && 'serial' in navigator)) return await TransportSerial.connect();
+    else if (S.transport==='ble' || (S.transport==='auto' && navigator.bluetooth)) return await TransportBLE.connect();
+    else if (S.transport==='demo') return await TransportDemo.connect();
+    else throw new Error('No hay transporte compatible. Prueba Web Serial (Chrome desktop) o BLE compatible.');
+  },
+  async disconnect(){ await TransportSerial.disconnect(); await TransportBLE.disconnect(); await TransportDemo.disconnect(); S.conn=null; S.writer=null; S.reader=null; $("#connStatus").textContent='Desconectado'; $("#btnConnect").classList.remove('hidden'); $("#btnDisconnect").classList.add('hidden'); },
+  async write(line){ const txt=line.endsWith('\\r')? line : line+'\\r'; log('> '+line); if(S.writer){ await S.writer(txt); } else throw new Error('No hay writer activo'); },
+  async request(line, timeout=1200){ await Transport.write(line); return await Transport.readUntil('>', timeout); },
+  async readUntil(term='>', timeout=1200){ const started=Date.now(); while(Date.now()-started<timeout){ const chunk=await Transport.readChunk(timeout-(Date.now()-started)); if(chunk){ S.buffer+=chunk; const idx=S.buffer.lastIndexOf(term); if(idx>=0){ const out=S.buffer.slice(0,idx); S.buffer=S.buffer.slice(idx+term.length); return clean(out); } } else { await sleep(20); } } return clean(S.buffer); },
+  async readChunk(){ return null; }
+};
+const TransportSerial = {
+  async connect(){ if(!('serial' in navigator)) throw new Error('Web Serial no disponible');
+    S.serialPort = await navigator.serial.requestPort();
+    await S.serialPort.open({ baudRate: 38400 });
+    const dec = new TextDecoderStream(); S.serialPort.readable.pipeTo(dec.writable); const reader = dec.readable.getReader();
+    S.reader = async ()=>{ const {value,done}=await reader.read(); if(done) return null; return value||null; };
+    const enc = new TextEncoderStream(); enc.readable.pipeTo(S.serialPort.writable); const writer = enc.writable.getWriter(); S.writer = async (txt)=>{ writer.write(txt); };
+    S.conn='serial'; $("#connStatus").textContent='Conectado (Serial)'; $("#btnConnect").classList.add('hidden'); $("#btnDisconnect").classList.remove('hidden'); log('[Serial] Conectado.'); return true;
+  },
+  async disconnect(){ try{ if(S.serialPort){ await S.serialPort.close(); S.serialPort=null; } }catch(e){} }
+};
+const BLE_UUID={ svc:'6e400001-b5a3-f393-e0a9-e50e24dcca9e', tx:'6e400002-b5a3-f393-e0a9-e50e24dcca9e', rx:'6e400003-b5a3-f393-e0a9-e50e24dcca9e' };
+const TransportBLE = {
+  async connect(){ if(!navigator.bluetooth) throw new Error('Web Bluetooth no disponible');
+    S.bleDev = await navigator.bluetooth.requestDevice({ filters:[{services:[BLE_UUID.svc]}], optionalServices:[BLE_UUID.svc] });
+    const server = await S.bleDev.gatt.connect(); const svc = await server.getPrimaryService(BLE_UUID.svc);
+    S.bleTx = await svc.getCharacteristic(BLE_UUID.tx); S.bleRx = await svc.getCharacteristic(BLE_UUID.rx);
+    await S.bleRx.startNotifications(); let queue=''; S.bleRx.addEventListener('characteristicvaluechanged', e=>{ const v=new TextDecoder().decode(e.target.value); queue+=v; });
+    S.reader = async ()=>{ await sleep(60); if(queue){ const z=queue; queue=''; return z; } return ''; };
+    S.writer = async (txt)=>{ const data=new TextEncoder().encode(txt); for(let i=0;i<data.length;i+=20){ await S.bleTx.writeValueWithoutResponse(data.slice(i,i+20)); await sleep(8);} };
+    S.conn='ble'; $("#connStatus").textContent='Conectado (BLE)'; $("#btnConnect").classList.add('hidden'); $("#btnDisconnect").classList.remove('hidden'); log('[BLE] Conectado.'); return true;
+  },
+  async disconnect(){ try{ if(S.bleDev && S.bleDev.gatt.connected) S.bleDev.gatt.disconnect(); S.bleDev=null; S.bleTx=null; S.bleRx=null; }catch(e){} }
+};
+const TransportDemo = { async connect(){ S.reader=async()=>{ await sleep(50); return ''; }; S.writer=async()=>{}; S.conn='demo'; $("#connStatus").textContent='Demo'; $("#btnConnect").classList.add('hidden'); $("#btnDisconnect").classList.remove('hidden'); log('[Demo] Modo demostración activo.'); return true; }, async disconnect(){} };
+
+function clean(s){ return s.replace(/\\r/g,'').replace(/ELM327 v[^\\n]+\\n?/i,'').replace(/^>/gm,'').replace(/\\n\\n+/g,'\\n').trim(); }
+
+// ---- OBD helpers ----
+async function initECU(){
+  await Transport.request('ATZ',1500); await sleep(300);
+  await Transport.request('ATE0'); await Transport.request('ATL0'); await Transport.request('ATS0'); await Transport.request('ATH0'); await Transport.request('ATSP0');
+  const pids = await Transport.request('0100'); $("#kPID").textContent = pids.split('\\n').pop() || pids.slice(-64);
+  const vin = await mode09_02(); $("#kVIN").textContent = vin||'—';
+  try{ const prot=await Transport.request('ATDP'); $("#kProto").textContent = prot.split('\\n').pop() || prot; }catch(e){}
+}
+async function sendReq(cmd){ return await Transport.request(cmd); }
+function hexToBytes(h){ h=h.replace(/\\s/g,''); const a=[]; for(let i=0;i<h.length;i+=2)a.push(parseInt(h.substr(i,2),16)); return a; }
+function parseLines(resp){ return resp.split('\\n').map(x=>x.trim()).filter(Boolean); }
+function lastDataLine(resp,prefix){ const lines=parseLines(resp).filter(x=>x && (!prefix || x.startsWith(prefix))); return lines.length? lines[lines.length-1]:''; }
+function parseOBD(prefix, resp){ const l=lastDataLine(resp,prefix).replace(/^([0-9A-F]{2}\\s*){2}/i,'').trim(); return hexToBytes(l.replace(/\\s/g,'')); }
+// PIDs
+async function pid010C(){ const r=await sendReq('010C'); const b=parseOBD('41 0C',r); if(b.length>=2){ return ((b[0]<<8)|b[1])/4; } return null; }
+async function pid010D(){ const r=await sendReq('010D'); const b=parseOBD('41 0D',r); if(b.length>=1) return b[0]; return null; }
+async function pid0105(){ const r=await sendReq('0105'); const b=parseOBD('41 05',r); if(b.length>=1) return b[0]-40; return null; }
+async function pid0111(){ const r=await sendReq('0111'); const b=parseOBD('41 11',r); if(b.length>=1) return (b[0]*100/255); return null; }
+async function readIM(){ const r=await sendReq('0101'); $("#imOut").textContent=r||'—'; }
+async function mode09_02(){ const r=await sendReq('0902'); $("#infoOut").textContent=r; const lines=parseLines(r).filter(x=>x.match(/^49 02/i)); let bytes=[]; lines.forEach(line=>{ const parts=line.replace(/^49 02 [0-9A-F]{2}\\s*/i,'').trim(); bytes=bytes.concat(hexToBytes(parts)); }); const ascii=bytes.filter(b=>b>=0x20 && b<=0x7E); const vin=new TextDecoder().decode(new Uint8Array(ascii)).trim(); return vin||''; }
+
+// DTC
+function dtcFromBytes(arr){ const out=[]; for(let i=0;i+1<arr.length;i+=2){ const A=arr[i],B=arr[i+1]; const sys=['P','C','B','U'][(A & 0xC0)>>6]; const d1=(A & 0x30)>>4; const d2=(A & 0x0F); const code=sys + d1 + d2 + ((B>>4)&0x0F) + (B&0x0F); if(code!=='P0000') out.push(code); } return out; }
+const DTC_DESC={ "P0300":"Fallo de encendido aleatorio/múltiple","P0301":"Fallo de encendido cilindro 1","P0171":"Mezcla pobre (Banco 1)","P0172":"Mezcla rica (Banco 1)","P0118":"Sensor temp. refrigerante alto","P0117":"Sensor temp. refrigerante bajo","P0101":"Rango/función del MAF","P0420":"Catalizador por debajo del umbral (B1)","P0430":"Catalizador por debajo del umbral (B2)","P0440":"Sistema EVAP mal funcionamiento","P0130":"Sensor O2 B1S1 circuito" };
+function renderDTC(list, where){ const wrap=$(where); if(!list.length){ wrap.innerHTML=`<div class="notice">Sin códigos.</div>`; return; } const items=list.map(c=>{ const d=DTC_DESC[c]||'Descripción genérica no encontrada.'; return `<tr><td class="mono">${c}</td><td>${d}</td></tr>`; }).join(''); wrap.innerHTML=`<table class="table"><thead><tr><th>Código</th><th>Descripción</th></tr></thead><tbody>${items}</tbody></table>`; }
+
+// Conexión
+$("#btnConnect")?.addEventListener('click', async ()=>{ try{ await Transport.connect($("#transport")?.value||'auto'); }catch(e){ alert(e.message); log('[ERROR] '+e.message);} });
+$("#btnDisconnect")?.addEventListener('click', async ()=>{ await Transport.disconnect(); });
+$("#btnInit")?.addEventListener('click', async ()=>{ if(!S.conn){ alert('Conéctate primero'); return; } try{ await initECU(); log('[OK] ECU inicializada.'); }catch(e){ log('[ERROR] init: '+e.message);} });
+$("#btnClearLog")?.addEventListener('click', ()=> $("#console").value='');
+$$('button[data-at]').forEach(b=> b.onclick = async ()=> { if(!S.conn) return alert('Conéctate primero'); const cmd=b.getAttribute('data-at'); const r=await Transport.request(cmd); log(r); });
+$$('button[data-req]').forEach(b=> b.onclick = async ()=>{ if(!S.conn) return alert('Conéctate primero'); const cmd=b.getAttribute('data-req'); const r=await Transport.request(cmd); log(r); });
+
+// Rápida
+$("#btnQuickPoll")?.addEventListener('click', async ()=>{
+  if(!S.conn) return alert('Conéctate primero');
+  clearInterval(S.quickTimer);
+  S.quickTimer = setInterval(async ()=>{
+    try{
+      const [rpm,spd,ect,thr]=await Promise.all([pid010C(),pid010D(),pid0105(),pid0111()]);
+      updateMini(rpm,spd,ect,thr);
+    }catch(e){}
+  }, 800);
+  setTimeout(()=> clearInterval(S.quickTimer), 5000);
+});
+$("#btnStopPoll")?.addEventListener('click', ()=> clearInterval(S.quickTimer));
+
+// Live + series
+function updateMini(rpm,spd,ect,thr){
+  if(rpm!=null) $("#dRPM") && ($("#dRPM").textContent = `${rpm.toFixed(0)} rpm`);
+  if(spd!=null) $("#dSPD") && ($("#dSPD").textContent = `${spd} km/h`);
+  if(ect!=null) $("#dECT") && ($("#dECT").textContent = `${ect} °C`);
+  if(thr!=null) $("#dTHR") && ($("#dTHR").textContent = `${thr.toFixed(0)} %`);
+  if(rpm!=null||spd!=null||ect!=null||thr!=null){
+    const t=(Date.now()-S.t0)/1000;
+    S.series.rpm.push(rpm??null); S.series.spd.push(spd??null); S.series.ect.push(ect??null); S.series.thr.push(thr??null); S.series.t.push(t);
+    Object.keys(S.series).forEach(k=>{ if(Array.isArray(S.series[k]) && S.series[k].length>S.maxPoints){ S.series[k].shift(); } });
+    refreshCharts();
+  }
+}
+$("#btnStartLive")?.addEventListener('click', async ()=>{
+  if(!S.conn) return alert('Conéctate primero');
+  const rate = +($("#liveRate")?.value || 500);
+  clearInterval(S.liveTimer);
+  if(!S.charts?.rpm) initCharts();
+  S.liveTimer = setInterval(async ()=>{
+    try{
+      const [rpm,spd,ect,thr]=await Promise.all([pid010C(),pid010D(),pid0105(),pid0111()]);
+      $("#liveRPM") && ( $("#liveRPM").textContent = rpm!=null? `${rpm.toFixed(0)} rpm`:'—');
+      $("#liveSPD") && ( $("#liveSPD").textContent = spd!=null? `${spd} km/h`:'—');
+      $("#liveECT") && ( $("#liveECT").textContent = ect!=null? `${ect} °C`:'—');
+      $("#liveTHR") && ( $("#liveTHR").textContent = thr!=null? `${thr.toFixed(0)} %`:'—');
+      updateMini(rpm,spd,ect,thr);
+    }catch(e){}
+  }, rate);
+});
+$("#btnStopLive")?.addEventListener('click', ()=> clearInterval(S.liveTimer));
+
+// Freeze / IM / Info
+$("#btnFF")?.addEventListener('click', async ()=>{ if(!S.conn) return alert('Conéctate primero'); const r=await Transport.request('02',2500); $("#ffOut").textContent=r; });
+$("#btnIM")?.addEventListener('click', readIM);
+$("#btnVIN")?.addEventListener('click', async ()=>{ const v=await mode09_02(); $("#infoOut").textContent='VIN: '+(v||'—'); $("#kVIN").textContent=v||'—'; });
+$("#btnCALID")?.addEventListener('click', async ()=>{ const r=await Transport.request('0904'); const r2=await Transport.request('0906'); $("#infoOut").textContent=r+'\\n'+r2; });
+$("#btnECUName")?.addEventListener('click', async ()=>{ const r=await Transport.request('090A'); $("#infoOut").textContent=r; });
+
+// iOS nota
+(function boot(){
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  if (isIOS && $("#compatNote")) $("#compatNote").innerHTML += '<br>iOS detectado: Web Serial no disponible.';
+  $("#year").textContent = new Date().getFullYear();
+})();
+</script>
+</body>
+</html>
