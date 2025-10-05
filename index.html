@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>OBD-II DTC — J1850 · ISO 14230 · CAN ISO 15765-4</title>
+<meta name="description" content="Lector OBD-II en navegador con ELM327: J1850, ISO 14230 (KWP), CAN ISO 15765-4. Lee y borra DTC genéricos.">
+<style>
+:root{
+  --bg:#0f0f12;--fg:#e9eaee;--muted:#a7a7b1;--card:#181a22;--line:#2b2e3d;--accent:#6ee7b7;--danger:#ef4444;--ok:#22c55e;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:15.5px/1.55 system-ui,-apple-system,Segoe UI,Roboto,Inter}
+header{position:sticky;top:0;background:#0c0d12cc;border-bottom:1px solid var(--line);backdrop-filter:blur(8px)}
+h1{font-size:24px;margin:10px 0}
+h2{font-size:18px;margin:18px 0 8px}
+main{max-width:1100px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+label{font-size:13px;color:var(--muted)}
+select,input,button{background:#12131a;color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+button{cursor:pointer}
+button.primary{border-color:#2c3b36;background:#15211d}
+button.primary:hover{outline:1px solid var(--accent)}
+.kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
+pre{background:#0c0f16;border:1px solid #1c2130;border-radius:10px;padding:12px;overflow:auto}
+.bad{color:var(--danger)} .ok{color:var(--ok)} .muted{color:var(--muted)}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left}
+small{color:var(--muted)}
+footer{padding:24px;color:var(--muted);text-align:center}
+.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;font-size:12px;color:#cfd0d8;background:#12131a;margin-right:6px}
+</style>
+</head>
+<body>
+<header>
+  <main class="row" style="align-items:center;justify-content:space-between;">
+    <div>
+      <h1>OBD-II DTC — J1850 · ISO 14230 · CAN ISO 15765-4</h1>
+      <small>ELM327 por Web Serial (USB) · Sitio seguro (HTTPS) · Navegador Chromium</small>
+    </div>
+    <div class="row">
+      <button id="btnConnect" class="primary">Conectar ELM327 (USB)</button>
+      <button id="btnDisconnect">Desconectar</button>
+      <button id="btnSimToggle">Simulador: Off</button>
+    </div>
+  </main>
+</header>
+
+<main>
+  <section class="card">
+    <h2>1) Protocolo & Ajustes</h2>
+    <div class="row">
+      <div>
+        <label>Protocolo ELM327 (AT SP):</label><br/>
+        <select id="proto">
+          <!-- Solo listamos los relevantes solicitados -->
+          <option value="0">0 - Auto</option>
+          <option value="1">1 - SAE J1850 PWM</option>
+          <option value="2">2 - SAE J1850 VPW</option>
+          <option value="4">4 - ISO 14230-4 KWP (5-baud init)</option>
+          <option value="5">5 - ISO 14230-4 KWP (fast init)</option>
+          <option value="6">6 - ISO 15765-4 CAN (11 bit, 500 kbaud)</option>
+          <option value="7">7 - ISO 15765-4 CAN (29 bit, 500 kbaud)</option>
+          <option value="8">8 - ISO 15765-4 CAN (11 bit, 250 kbaud)</option>
+          <option value="9">9 - ISO 15765-4 CAN (29 bit, 250 kbaud)</option>
+        </select>
+      </div>
+      <div>
+        <label>Cabeceras (ATH):</label><br/>
+        <select id="ath">
+          <option value="0">ATH0 (ocultar)</option>
+          <option value="1">ATH1 (mostrar)</option>
+        </select>
+      </div>
+      <div>
+        <label>Tiempo espera (AT ST):</label><br/>
+        <select id="timeout">
+          <option value="0A">0A (100 ms)</option>
+          <option value="0F" selected>0F (250 ms)</option>
+          <option value="14">14 (400 ms)</option>
+          <option value="28">28 (1 s)</option>
+        </select>
+      </div>
+      <div style="align-self:end">
+        <button id="btnInit" class="primary">Inicializar ELM</button>
+      </div>
+    </div>
+    <small>Secuencia típica: <span class="pill">ATZ</span><span class="pill">ATE0</span><span class="pill">ATL0</span><span class="pill">ATS0</span><span class="pill">ATHx</span><span class="pill">ATST xx</span><span class="pill">ATSP x</span></small>
+  </section>
+
+  <section class="card">
+    <h2>2) Lectura & Borrado de DTC</h2>
+    <div class="row">
+      <button id="btnReadMil" class="primary">Estado MIL & Monitores (01 01)</button>
+      <button id="btnReadDTC" class="primary">Leer DTC (03)</button>
+      <button id="btnClearDTC" class="bad">Borrar DTC (04)</button>
+    </div>
+    <div class="row">
+      <div style="flex:1">
+        <h3>Salida cruda (HEX)</h3>
+        <pre id="raw"></pre>
+      </div>
+      <div style="flex:1">
+        <h3>Decodificación</h3>
+        <div id="decoded"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>3) Comandos rápidos</h2>
+    <div class="row">
+      <button data-cmd="0100" class="primary">PIDs soportados (01 00)</button>
+      <button data-cmd="010C" class="primary">RPM (01 0C)</button>
+      <button data-cmd="010D" class="primary">Velocidad (01 0D)</button>
+      <button data-cmd="0111" class="primary">Carga (01 11)</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <input id="customCmd" class="kbd" placeholder="Escribe un comando (ej: 012F)"/>
+      <button id="btnSendCustom">Enviar modo 01</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Notas rápidas</h2>
+    <ul>
+      <li>Los códigos **P0xxx** son genéricos; **P1xxx** pueden ser específicos OEM.</li>
+      <li>En **CAN ISO 15765-4**, las respuestas largas usan **ISO-TP** (segmentación). El ELM327 las re-ensambla.</li>
+      <li>En **J1850**/**KWP**, podría ser necesario ajustar **timeout (AT ST)** y **cabeceras (ATH1)** para ver IDs.</li>
+      <li>Siempre motor apagado al <b>borrar DTC (04)</b>. Hazlo bajo tu responsabilidad.</li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  Hecho para GitHub Pages. Requiere navegador con <b>Web Serial</b>. © 2025
+</footer>
+
+<script>
+/* ============================
+   Núcleo OBD-II Web Serial
+   ============================ */
+let port, reader, writer, textDecoder, textEncoder;
+let readLoopActive = false;
+let rawEl = document.getElementById('raw');
+let decodedEl = document.getElementById('decoded');
+let isSim = false;
+
+const UI = {
+  logRaw: (s) => { rawEl.textContent = (rawEl.textContent + s + "\\n").slice(-12000); },
+  clearRaw: () => rawEl.textContent = '',
+  showDecoded: (html) => decodedEl.innerHTML = html,
+  appendDecoded: (html) => decodedEl.innerHTML += html
+};
+
+/* Simulador simple para pruebas sin hardware */
+const Sim = {
+  on: false,
+  send: async (cmd) => {
+    const c = cmd.replace(/\\s+/g,'').toUpperCase();
+    if(c==="ATZ") return "ELM327 v1.5\\r\\r>";
+    if(c==="ATE0"||c==="ATL0"||c==="ATS0"||c.startsWith("ATH")||c.startsWith("ATSP")||c.startsWith("ATST")) return "OK\\r\\r>";
+    if(c==="0101") return "41 01 83 07 65 00\\r\\r>"; // MIL on + monitores (ejemplo)
+    if(c==="03") return "43 01 33 00 00 00\\r\\r>";   // P0133
+    if(c==="04") return "44\\r\\r>";                  // borrado ok
+    if(c==="0100") return "41 00 BE 3F A8 13\\r\\r>";
+    if(c==="010C") return "41 0C 1A F8\\r\\r>";       // RPM ~ 1726
+    if(c==="010D") return "41 0D 28\\r\\r>";          // Vel 40 km/h
+    if(c.startsWith("01")) return "NO DATA\\r\\r>";
+    return "?\\r\\r>";
+  }
+};
+
+/* Utilidades hex */
+const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+const hexBytes = (str)=>str.replace(/[^0-9A-F]/gi,' ').trim().split(/\\s+/).filter(Boolean);
+const toHex = (n)=>n.toString(16).toUpperCase().padStart(2,'0');
+
+/* DTC decoding (SAE J2012) */
+function decodeDTCsFromResponse(resp){
+  // unimos todas las líneas, quitamos eco, '>' y basura
+  let body = resp.replace(/\\r/g,' ').replace(/>/g,' ').replace(/\\s+/g,' ').trim();
+  // buscamos bloques "43 ..." (modo 03 respuesta)
+  const tokens = hexBytes(body);
+  // Si la respuesta incluye encabezado (e.g., 7E8 10 14 43 ...), ELM ya suele limpiar; por si acaso ignoramos IDs 7E8/7E9
+  // Encontrar índice del "43"
+  let i = tokens.findIndex(t => t.toUpperCase()==="43");
+  if(i<0){
+    // Algunos ELM devuelven directamente códigos sin '43' cuando ATH0; intentamos heurística
+    i = 0;
+  } else {
+    i++; // avanzar tras 43
+  }
+  const bytes = tokens.slice(i);
+  const dtcs = [];
+  for(let k=0;k+1<bytes.length; k+=2){
+    const A = parseInt(bytes[k],16);
+    const B = parseInt(bytes[k+1],16);
+    if(isNaN(A)||isNaN(B)) break;
+    if(A===0 && B===0) break;
+    const first = A >> 6; // 2 bits
+    const type = ["P","C","B","U"][first] || "P";
+    const d1 = (A >> 4) & 0x3;
+    const d2 = A & 0xF;
+    const d3 = (B >> 4) & 0xF;
+    const d4 = B & 0xF;
+    const code = `${type}${d1}${d2}${d3}${d4}`;
+    dtcs.push(code);
+  }
+  return dtcs;
+}
+
+/* Estado MIL (01 01) */
+function decodeMilAndMonitors(resp){
+  // Formato típico: 41 01 A B C D
+  const t = hexBytes(resp);
+  const i = t.findIndex(x=>x.toUpperCase()==="41");
+  let A,B,C,D;
+  if(i>=0 && t[i+1]==="01"){ A=parseInt(t[i+2],16); B=parseInt(t[i+3],16); C=parseInt(t[i+4],16); D=parseInt(t[i+5],16);}
+  if([A,B,C,D].some(x=>isNaN(x))) return "<p class='muted'>No se pudo interpretar 41 01.</p>";
+  const milOn = (A & 0x80) !== 0;
+  const dtcCnt = A & 0x7F;
+  return `
+    <p><b>MIL:</b> ${milOn? "<span class='bad'>Encendida</span>":"<span class='ok'>Apagada</span>"} — <b>DTC almacenados:</b> ${dtcCnt}</p>
+    <p class='muted'>Bytes: A=${toHex(A)} B=${toHex(B)} C=${toHex(C)} D=${toHex(D)}</p>
+  `;
+}
+
+/* Web Serial I/O */
+async function serialWrite(line){
+  const data = new TextEncoder().encode(line + "\\r");
+  if(Sim.on) { 
+    const simResp = await Sim.send(line);
+    UI.logRaw("> " + line);
+    UI.logRaw(simResp.trim());
+    return simResp;
+  }
+  await writer.write(data);
+  UI.logRaw("> " + line);
+  // leer hasta '>' prompt
+  let buffer = "";
+  while(true){
+    const { value, done } = await reader.read();
+    if(done) break;
+    const txt = new TextDecoder().decode(value);
+    buffer += txt;
+    if(txt.includes(">")) break;
+  }
+  UI.logRaw(buffer.trim());
+  return buffer;
+}
+
+/* Conectar / Desconectar */
+async function connect(){
+  if(!("serial" in navigator) && !Sim.on){
+    alert("Tu navegador no soporta Web Serial. Usa Chrome/Edge de escritorio o activa el simulador.");
+    return;
+  }
+  if(Sim.on) { return; } // nada que conectar
+  port = await navigator.serial.requestPort();
+  await port.open({ baudRate: 38400 }); // muchos ELM funcionan 38400/115200; 38400 es seguro
+  textEncoder = new TextEncoder();
+  textDecoder = new TextDecoder();
+  const readerStream = port.readable.getReader();
+  reader = readerStream;
+  const writerStream = port.writable.getWriter();
+  writer = writerStream;
+}
+
+async function disconnect(){
+  try{
+    if(reader){ await reader.releaseLock(); }
+    if(writer){ await writer.releaseLock(); }
+    if(port){ await port.close(); }
+  }catch(e){}
+}
+
+/* Inicialización ELM */
+async function initElm(){
+  UI.clearRaw(); UI.showDecoded("");
+  const ath = document.getElementById('ath').value;
+  const st  = document.getElementById('timeout').value;
+  const sp  = document.getElementById('proto').value;
+  await serialWrite("ATZ"); await sleep(300);
+  await serialWrite("ATE0"); // eco off
+  await serialWrite("ATL0"); // no linefeeds
+  await serialWrite("ATS0"); // no spaces
+  await serialWrite("ATH"+ath); // headers on/off
+  await serialWrite("ATST"+st); // timeout
+  await serialWrite("ATSP"+sp); // protocolo
+  UI.appendDecoded("<p>ELM inicializado. Protocolo: "+sp+" | ATH"+ath+" | ST "+st+"</p>");
+}
+
+/* Lecturas clave */
+async function readMil(){
+  const resp = await serialWrite("0101");
+  UI.showDecoded(decodeMilAndMonitors(resp));
+}
+
+async function readDTC(){
+  const resp = await serialWrite("03");
+  const codes = decodeDTCsFromResponse(resp);
+  if(codes.length===0){
+    UI.showDecoded("<p class='ok'>Sin DTC almacenados.</p>");
+  } else {
+    let html = "<table class='table'><thead><tr><th>Código</th><th>Tipo</th></tr></thead><tbody>";
+    codes.forEach(c=>{
+      const tipo = c[0]==="P"?"Powertrain":"C"===c[0]?"Chassis":"B"===c[0]?"Body":"Network";
+      html += `<tr><td><b>${c}</b></td><td>${tipo}</td></tr>`;
+    });
+    html += "</tbody></table>";
+    UI.showDecoded(html);
+  }
+}
+
+async function clearDTC(){
+  if(!confirm("Esto borrará DTC y datos congelados (freeze frame). Motor apagado, llave en ON. ¿Continuar?")) return;
+  const resp = await serialWrite("04");
+  UI.showDecoded("<p>Solicitado borrado de DTC (Modo 04). Revisa MIL y vuelve a leer DTC.</p>");
+}
+
+/* PIDs rápidos (modo 01) */
+async function send01(pid){
+  const cmd = "01" + pid.toUpperCase().replace(/[^0-9A-F]/g,'').padStart(2,'0');
+  const resp = await serialWrite(cmd);
+  // Demostración: RPM & speed
+  if(pid.toUpperCase()==="0C"){
+    const t = hexBytes(resp);
+    const i = t.findIndex(x=>x.toUpperCase()==="41");
+    if(i>=0 && t[i+1]==="0C"){
+      const A = parseInt(t[i+2],16), B=parseInt(t[i+3],16);
+      if(!isNaN(A)&&!isNaN(B)){
+        const rpm = ((256*A)+B)/4;
+        UI.appendDecoded(`<p>RPM: <b>${rpm.toFixed(0)} rpm</b></p>`);
+      }
+    }
+  } else if(pid.toUpperCase()==="0D"){
+    const t = hexBytes(resp);
+    const i = t.findIndex(x=>x.toUpperCase()==="41");
+    if(i>=0 && t[i+1]==="0D"){
+      const A = parseInt(t[i+2],16);
+      if(!isNaN(A)) UI.appendDecoded(`<p>Velocidad: <b>${A} km/h</b></p>`);
+    }
+  } else {
+    UI.appendDecoded("<p class='muted'>Respuesta interpretada arriba. Si aplica, usa tablas SAE J1979.</p>");
+  }
+}
+
+/* UI events */
+document.getElementById('btnConnect').addEventListener('click', async ()=>{
+  try{ await connect(); alert("Conectado. Ahora inicializa el ELM."); }catch(e){ alert("No se pudo abrir el puerto: "+e); }
+});
+document.getElementById('btnDisconnect').addEventListener('click', async ()=>{ await disconnect(); alert("Desconectado."); });
+document.getElementById('btnInit').addEventListener('click', initElm);
+document.getElementById('btnReadMil').addEventListener('click', readMil);
+document.getElementById('btnReadDTC').addEventListener('click', readDTC);
+document.getElementById('btnClearDTC').addEventListener('click', clearDTC);
+
+document.querySelectorAll('[data-cmd]').forEach(btn=>{
+  btn.addEventListener('click', async ()=>{ UI.showDecoded(""); await send01(btn.getAttribute('data-cmd').slice(2)); });
+});
+document.getElementById('btnSendCustom').addEventListener('click', async ()=>{
+  const p = document.getElementById('customCmd').value.trim();
+  if(!p){ return; }
+  UI.showDecoded("");
+  const clean = p.replace(/[^0-9A-Fa-f]/g,'').toUpperCase();
+  await send01(clean);
+});
+
+document.getElementById('btnSimToggle').addEventListener('click', ()=>{
+  Sim.on = !Sim.on;
+  document.getElementById('btnSimToggle').textContent = "Simulador: " + (Sim.on?"On":"Off");
+  alert("Simulador " + (Sim.on?"activado":"desactivado") + ". Puedes probar sin hardware.");
+});
+</script>
+</body>
+</html>
