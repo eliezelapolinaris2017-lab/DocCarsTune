@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Doctor Car Pro — USB & BLE · DTC + VIN + Freeze + Live</title>
+<meta name="description" content="Doctor Car Pro: lector OBD-II en navegador (ELM327 USB/BLE). DTC, VIN, Freeze Frame, Live Data, exportar CSV y PDF.">
+<style>
+:root{
+  /* Paleta Doctor Car Pro */
+  --bg:#0b0e13; --fg:#e8edf6; --muted:#a5b0c2;
+  --card:#131823; --line:#2a3650;
+  --acc:#48c6ef; --ok:#34d399; --bad:#ef4444; --warn:#f59e0b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:15.5px/1.55 system-ui,-apple-system,Segoe UI,Roboto,Inter}
+header{position:sticky;top:0;background:#0b0d12cc;border-bottom:1px solid var(--line);backdrop-filter:blur(8px);z-index:10}
+main{max-width:1200px;margin:0 auto;padding:16px}
+h1{font-size:24px;margin:10px 0}h2{font-size:18px;margin:18px 0 8px}h3{margin:10px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+label{font-size:13px;color:var(--muted)}
+select,input,button,textarea{background:#0f1320;color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+button{cursor:pointer}button.primary{border-color:#1e3a5f;background:#0e2036}button.primary:hover{outline:1px solid var(--acc)}
+pre{background:#0b0f1a;border:1px solid #16223a;border-radius:10px;padding:12px;overflow:auto;max-height:260px}
+.table{width:100%;border-collapse:collapse}.table th,.table td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left}
+.small{color:var(--muted)}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.grid{display:grid;gap:16px}@media(min-width:980px){.grid.cols-2{grid-template-columns:1fr 1fr}}
+canvas{width:100%;height:220px;background:#0b0f1a;border:1px solid #16223a;border-radius:10px}
+footer{padding:24px;color:var(--muted);text-align:center}
+.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;font-size:12px;color:#cfd0d8;background:#0f1320;margin-right:6px}
+.brand{display:flex;gap:12px;align-items:center}
+.brand img{width:40px;height:40px;border-radius:8px;object-fit:contain;background:#0f1320;border:1px solid #1e2e52}
+#printHeader{display:flex;gap:12px;align-items:center;margin-bottom:8px}
+#printHeader img{width:56px;height:56px;border-radius:10px;object-fit:contain;background:#0f1320;border:1px solid #1e2e52}
+.only-print{display:none}
+@media print{
+  header,#controls,.no-print{display:none!important}
+  .card{border:none}
+  .only-print{display:block}
+  body{background:#fff;color:#000}
+}
+</style>
+</head>
+<body>
+<header id="controls">
+  <main class="row" style="justify-content:space-between;">
+    <div class="brand">
+      <img id="brandLogo" alt="Logo Doctor Car Pro"/>
+      <div>
+        <h1>Doctor Car Pro — USB & BLE</h1>
+        <div class="small">ELM327 por Web Serial (USB) o Web Bluetooth (BLE) · Chrome/Edge · HTTPS</div>
+      </div>
+    </div>
+    <div class="row">
+      <button id="btnUsb" class="primary">Conectar USB</button>
+      <button id="btnBle" class="primary">Conectar Bluetooth (BLE)</button>
+      <button id="btnDisc">Desconectar</button>
+      <button id="btnSim">Simulador: Off</button>
+      <button id="btnPrint">Imprimir / PDF</button>
+      <button id="btnCsv">Exportar CSV</button>
+    </div>
+  </main>
+</header>
+
+<main>
+  <section class="card">
+    <h2>0) Identidad visual</h2>
+    <div class="row">
+      <input type="file" id="logoInput" accept="image/*"/>
+      <button id="btnLogoClear">Quitar logo</button>
+      <span class="small">El logo se guarda localmente (localStorage) y aparece en el reporte/PDF.</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>1) Ajustes ELM327</h2>
+    <div class="row">
+      <div>
+        <label>Protocolo (AT SP)</label><br/>
+        <select id="proto">
+          <option value="0">0 - Auto</option>
+          <option value="1">1 - J1850 PWM</option>
+          <option value="2">2 - J1850 VPW</option>
+          <option value="4">4 - ISO 14230-4 KWP (5-baud)</option>
+          <option value="5">5 - ISO 14230-4 KWP (fast)</option>
+          <option value="6" selected>6 - ISO 15765-4 CAN (11/500)</option>
+          <option value="7">7 - ISO 15765-4 CAN (29/500)</option>
+          <option value="8">8 - ISO 15765-4 CAN (11/250)</option>
+          <option value="9">9 - ISO 15765-4 CAN (29/250)</option>
+        </select>
+      </div>
+      <div>
+        <label>Cabeceras (ATH)</label><br/>
+        <select id="ath">
+          <option value="0">ATH0 (ocultar)</option>
+          <option value="1" selected>ATH1 (mostrar)</option>
+        </select>
+      </div>
+      <div>
+        <label>Timeout (AT ST)</label><br/>
+        <select id="timeout">
+          <option value="0A">0A (100 ms)</option>
+          <option value="0F" selected>0F (250 ms)</option>
+          <option value="14">14 (400 ms)</option>
+          <option value="28">28 (1 s)</option>
+        </select>
+      </div>
+      <div style="align-self:end">
+        <button id="btnInit" class="primary">Inicializar ELM</button>
+      </div>
+    </div>
+    <div class="small">
+      Secuencia: <span class="pill">ATZ</span><span class="pill">ATE0</span><span class="pill">ATL0</span><span class="pill">ATS0</span><span class="pill">ATHx</span><span class="pill">ATST xx</span><span class="pill">ATSP x</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>2) Identificación & Capacidades</h2>
+    <div class="row">
+      <button id="btnVIN" class="primary">Leer VIN (09 02)</button>
+      <button id="btnPIDs" class="primary">PIDs soportados (01 00)</button>
+    </div>
+    <div id="idOut" class="small" style="margin-top:8px"></div>
+  </section>
+
+  <section class="card">
+    <h2>3) DTC — Leer/Borrar</h2>
+    <div class="row">
+      <button id="btnMil" class="primary">MIL & Monitores (01 01)</button>
+      <button id="btn03" class="primary">DTC almacenados (03)</button>
+      <button id="btn07" class="primary">DTC pendientes (07)</button>
+      <button id="btn0A" class="primary">DTC permanentes (0A)</button>
+      <button id="btn04" class="bad">Borrar DTC (04)</button>
+    </div>
+    <div class="grid cols-2" style="margin-top:12px">
+      <div>
+        <h3>Salida cruda</h3>
+        <pre id="raw"></pre>
+      </div>
+      <div>
+        <h3>Decodificación</h3>
+        <div id="dec"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>4) Freeze Frame</h2>
+    <div class="row">
+      <select id="ffPid">
+        <option value="00">02 00 — PIDs FF soportados</option>
+        <option value="01">02 01 — MIL & DTC count (FF)</option>
+        <option value="03">02 03 — Fuel system</option>
+        <option value="04">02 04 — Carga</option>
+        <option value="05" selected>02 05 — ECT</option>
+        <option value="0B">02 0B — MAP</option>
+        <option value="0C">02 0C — RPM</option>
+        <option value="0D">02 0D — Velocidad</option>
+        <option value="10">02 10 — MAF</option>
+        <option value="11">02 11 — TPS</option>
+        <option value="14">02 14 — O2 S1 (V/Trim)</option>
+        <option value="06">02 06 — STFT</option>
+        <option value="07">02 07 — LTFT</option>
+      </select>
+      <button id="btnFF" class="primary">Leer FF (PID)</button>
+      <button id="btnFFScan">Barrido FF (auto)</button>
+    </div>
+    <div id="ffOut" class="small" style="margin-top:8px"></div>
+  </section>
+
+  <section class="card">
+    <h2>5) Live Data + Gráfico</h2>
+    <div class="row">
+      <button id="liveStart" class="primary">Iniciar Live</button>
+      <button id="liveStop">Detener</button>
+      <select id="liveSel">
+        <option value="010C">01 0C — RPM</option>
+        <option value="010D">01 0D — Velocidad</option>
+        <option value="0105" selected>01 05 — ECT</option>
+        <option value="0110">01 10 — MAF</option>
+        <option value="0111">01 11 — TPS</option>
+      </select>
+      <input id="liveInt" type="number" min="200" value="800" style="width:110px" title="Intervalo ms"/>
+    </div>
+    <canvas id="chart"></canvas>
+    <div id="liveOut" class="small" style="margin-top:8px"></div>
+  </section>
+
+  <!-- Área de REPORTE (Impresión) -->
+  <section class="card">
+    <div id="printArea">
+      <div id="printHeader">
+        <img id="reportLogo" alt="Logo Doctor Car Pro"/>
+        <div>
+          <h1>Reporte Doctor Car Pro</h1>
+          <p class="small">Fecha: <span id="repDate"></span></p>
+          <p class="small">VIN: <span id="repVIN">—</span></p>
+        </div>
+      </div>
+      <div id="repBody" class="small"></div>
+    </div>
+    <div class="row no-print" style="margin-top:10px">
+      <button id="btnAddNote">Añadir nota</button>
+      <button id="btnClearReport">Limpiar reporte</button>
+    </div>
+  </section>
+</main>
+
+<footer class="no-print">
+  Doctor Car Pro — Requiere navegador con Web Serial / Web Bluetooth (BLE). © 2025
+</footer>
+
+<script>
+/* ================= Transporte: USB, BLE, Simulador ================= */
+let transport = null; // {type:'usb'|'ble'|'sim', write(line)->resp, close()}
+let rawEl = document.getElementById('raw'), decEl = document.getElementById('dec'), idOut = document.getElementById('idOut');
+
+const UI = {
+  log: s => { rawEl.textContent = (rawEl.textContent + s + "\\n").slice(-20000); },
+  clear: ()=> rawEl.textContent = '',
+  show: html => decEl.innerHTML = html,
+  add: html => decEl.innerHTML += html,
+  id:  html => idOut.innerHTML = html,
+  ff:  html => document.getElementById('ffOut').innerHTML = html,
+  toast: m => alert(m),
+  rep:  html => document.getElementById('repBody').innerHTML += html,
+  repSetVIN: v => document.getElementById('repVIN').textContent = v||"—",
+  repDate: ()=> document.getElementById('repDate').textContent = new Date().toLocaleString()
+};
+UI.repDate();
+
+/* ====== Logo (persistencia local) ====== */
+const brandLogo = document.getElementById('brandLogo');
+const reportLogo = document.getElementById('reportLogo');
+function loadLogo(){
+  const data = localStorage.getItem('dcp_logo');
+  if(data){ brandLogo.src = data; reportLogo.src = data; }
+}
+loadLogo();
+document.getElementById('logoInput').addEventListener('change', e=>{
+  const f = e.target.files?.[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{ localStorage.setItem('dcp_logo', r.result); loadLogo(); };
+  r.readAsDataURL(f);
+});
+document.getElementById('btnLogoClear').addEventListener('click', ()=>{
+  localStorage.removeItem('dcp_logo'); brandLogo.removeAttribute('src'); reportLogo.removeAttribute('src');
+});
+
+/* ====== Simulador ====== */
+const Sim = {
+  on:false,
+  async write(line){
+    const c = line.replace(/\\s+/g,'').toUpperCase();
+    if(c==="ATZ") return "ELM327 v1.5\\r\\r>";
+    if(/^AT(E0|L0|S0|H[01]|SP[0-9]|ST[0-9A-F]{2}|SH[0-9A-F]+|CRA[0-9A-F]+)$/.test(c)) return "OK\\r\\r>";
+    // Identificación
+    if(c==="0902") return "49 02 01 57 50 30 5A 5A 5A 5A 5A 5A 31 32 33 34 35 36\\r\\r>"; // VIN WP0ZZZZZZ123456
+    if(c==="0100") return "41 00 BE 3F A8 13\\r\\r>";
+    // DTC
+    if(c==="0101") return "41 01 83 07 65 00\\r\\r>"; // MIL ON, 3 DTC
+    if(c==="03")   return "43 01 33 02 10 00\\r\\r>"; // P0133, P0210
+    if(c==="07")   return "47 00 00 00 00\\r\\r>";
+    if(c==="0A")   return "4A 00 00 00 00\\r\\r>";
+    if(c==="04")   return "44\\r\\r>";
+    // Freeze frame
+    if(c==="0205") return "42 05 5A\\r\\r>";
+    if(c==="020C") return "42 0C 1A F8\\r\\r>";
+    if(c==="020D") return "42 0D 28\\r\\r>";
+    if(c==="0210") return "42 10 01 F4\\r\\r>";
+    if(c==="0211") return "42 11 50\\r\\r>";
+    if(c==="020B") return "42 0B 3C\\r\\r>";
+    if(c==="0214") return "42 14 20 80\\r\\r>";
+    // Live
+    if(c==="0105") return "41 05 5A\\r\\r>";
+    if(c==="010C") return "41 0C 1A F8\\r\\r>";
+    if(c==="010D") return "41 0D 28\\r\\r>";
+    if(c==="0110") return "41 10 01 F4\\r\\r>";
+    if(c==="0111") return "41 11 50\\r\\r>";
+    return "NO DATA\\r\\r>";
+  },
+  async close(){},
+  type:'sim'
+};
+
+/* ====== USB (Web Serial) ====== */
+const USB = {
+  port:null, reader:null, writer:null,
+  async open(){
+    this.port = await navigator.serial.requestPort();
+    await this.port.open({baudRate:38400});
+    this.reader = this.port.readable.getReader();
+    this.writer = this.port.writable.getWriter();
+  },
+  async close(){ try{ if(this.reader){await this.reader.releaseLock()} if(this.writer){await this.writer.releaseLock()} if(this.port){await this.port.close()} }catch(e){} },
+  async write(line){
+    await this.writer.write(new TextEncoder().encode(line+"\\r"));
+    let buf=""; while(true){ const {value,done}=await this.reader.read(); if(done) break; const t=new TextDecoder().decode(value); buf+=t; if(t.includes(">")) break; }
+    return buf;
+  },
+  type:'usb'
+};
+
+/* ====== BLE (Web Bluetooth) — NUS y HM-10 ====== */
+const UUID={NUS_S:"6e400001-b5a3-f393-e0a9-e50e24dcca9e",NUS_RX:"6e400002-b5a3-f393-e0a9-e50e24dcca9e",NUS_TX:"6e400003-b5a3-f393-e0a9-e50e24dcca9e",HM_S:"0000ffe0-0000-1000-8000-00805f9b34fb",HM_CH:"0000ffe1-0000-1000-8000-00805f9b34fb"};
+function delay(ms){return new Promise(r=>setTimeout(r,ms));}
+function makeBle(){
+  return{
+    dev:null,server:null,srv:null,rx:null,tx:null,buf:"",
+    async open(){
+      this.dev = await navigator.bluetooth.requestDevice({filters:[{namePrefix:"OBD"},{namePrefix:"ELM"},{namePrefix:"Vgate"},{namePrefix:"OBDLink"}],optionalServices:[UUID.NUS_S,UUID.HM_S]});
+      this.server = await this.dev.gatt.connect();
+      try{ this.srv=await this.server.getPrimaryService(UUID.NUS_S); this.rx=await this.srv.getCharacteristic(UUID.NUS_RX); this.tx=await this.srv.getCharacteristic(UUID.NUS_TX); }
+      catch(e){ this.srv=await this.server.getPrimaryService(UUID.HM_S); this.rx=await this.srv.getCharacteristic(UUID.HM_CH); this.tx=this.rx; }
+      await this.tx.startNotifications();
+      this.tx.addEventListener('characteristicvaluechanged',e=>{ this.buf += new TextDecoder().decode(e.target.value); });
+    },
+    async close(){ try{ if(this.dev?.gatt?.connected) this.dev.gatt.disconnect(); }catch(e){} },
+    async write(line){
+      const data=new TextEncoder().encode(line+"\\r");
+      for(let i=0;i<data.length;i+=20){ await this.rx.writeValueWithoutResponse(data.slice(i,i+20)); await delay(10); }
+      let t0=Date.now(); while(Date.now()-t0<3000){ await delay(30); if(this.buf.includes(">")){ const o=this.buf; this.buf=""; return o; } }
+      const o=this.buf; this.buf=""; return o||"NO DATA\\r\\r>";
+    },
+    type:'ble'
+  };
+}
+
+/* ================= Utilidades OBD ================= */
+function bytes(str){return str.replace(/[^0-9A-F]/gi,' ').trim().split(/\\s+/).filter(Boolean)}
+function hx(n){return n.toString(16).toUpperCase().padStart(2,'0')}
+async function send(line){ if(!transport){UI.toast("Conecta primero."); return ""} UI.log("> "+line); const r=await transport.write(line); UI.log(r.trim()); return r; }
+
+/* MIL & monitores (41 01) */
+function decodeMil(resp){
+  const t=bytes(resp); const i=t.findIndex(x=>x.toUpperCase()==="41"); if(i<0||t[i+1]!=="01") return "<p class='small'>No se pudo interpretar 41 01.</p>";
+  const A=parseInt(t[i+2],16),B=parseInt(t[i+3],16),C=parseInt(t[i+4],16),D=parseInt(t[i+5],16);
+  if([A,B,C,D].some(isNaN)) return "<p class='small'>41 01 incompleto.</p>";
+  const mil=(A&0x80)!==0, cnt=A&0x7F;
+  return `<p><b>MIL:</b> ${mil?'<span class="bad">ON</span>':'<span class="ok">OFF</span>'} — <b>DTC:</b> ${cnt}</p><p class='small'>A=${hx(A)} B=${hx(B)} C=${hx(C)} D=${hx(D)}</p>`;
+}
+
+/* DTC (03/07/0A → 43/47/4A) */
+function decodeDTC(resp,svc){
+  const t=bytes(resp); let i=t.findIndex(x=>x.toUpperCase()===svc); if(i<0)i=0; else i++;
+  const out=[]; for(let k=i;k+1<t.length;k+=2){
+    const A=parseInt(t[k],16), B=parseInt(t[k+1],16); if(isNaN(A)||isNaN(B)) break;
+    if(A===0 && B===0) break;
+    const type=["P","C","B","U"][A>>6]||"P";
+    out.push(type+((A>>4)&3)+(A&15)+((B>>4)&15)+(B&15));
+  }
+  return out;
+}
+function renderDTC(title,codes){
+  if(!codes.length){ UI.show(`<p class="ok">Sin códigos en ${title}.</p>`); UI.rep(`<h3>${title}</h3><p>Sin códigos.</p>`); return; }
+  let h=`<h3>${title}</h3><table class="table"><tr><th>Código</th><th>Sistema</th></tr>`;
+  for(const c of codes){ const s=c[0]==="P"?"Powertrain":c[0]==="C"?"Chassis":c[0]==="B"?"Body":"Network"; h+=`<tr><td><b>${c}</b></td><td>${s}</td></tr>`; }
+  h+="</table>"; UI.show(h); UI.rep(h);
+}
+
+/* VIN (49 02) — concatenación simple */
+function decodeVIN(resp){
+  const t=bytes(resp); let vinBytes=[];
+  for(let i=0;i<t.length;i++){ if(t[i]==="49" && t[i+1]==="02"){ const len = Math.min(14, t.length-(i+3)); for(let k=i+3;k<i+3+len;k++){ const b=parseInt(t[k],16); if(!isNaN(b)) vinBytes.push(b); } } }
+  const vin = vinBytes.map(b=>String.fromCharCode(b)).join("").replace(/[^0-9A-Z]/g,"").slice(0,17);
+  return vin || "—";
+}
+
+/* PID decoders */
+const PID={
+  rpm:(A,B)=>((256*A+B)/4),
+  speed:(A)=>A,
+  ect:(A)=>A-40,
+  maf:(A,B)=>((256*A+B)/100),
+  tps:(A)=>(A*100/255)
+};
+function decodePID(resp, modePid){
+  const t=bytes(resp); const m=modePid.slice(0,2).toUpperCase(); const p=modePid.slice(3,5).toUpperCase();
+  const i=t.findIndex(x=>x.toUpperCase()===m); if(i<0||t[i+1]!==p) return null;
+  const A=parseInt(t[i+2],16),B=parseInt(t[i+3]||"00",16);
+  switch(p){case"0C":return {name:"RPM",val:PID.rpm(A,B),unit:"rpm"};
+    case"0D":return {name:"Velocidad",val:PID.speed(A),unit:"km/h"};
+    case"05":return {name:"ECT",val:PID.ect(A),unit:"°C"};
+    case"10":return {name:"MAF",val:PID.maf(A,B),unit:"g/s"};
+    case"11":return {name:"TPS",val:PID.tps(A),unit:"%"}; default:return null;}
+}
+
+/* =============== Inicialización y acciones =============== */
+async function initElm(){
+  UI.clear(); UI.show(""); idOut.innerHTML=""; UI.repDate();
+  const ath=document.getElementById('ath').value, st=document.getElementById('timeout').value, sp=document.getElementById('proto').value;
+  await send("ATZ"); await new Promise(r=>setTimeout(r,300));
+  await send("ATE0"); await send("ATL0"); await send("ATS0");
+  await send("ATH"+ath); await send("ATST"+st); await send("ATSP"+sp);
+  UI.add(`<p>ELM listo. Protocolo ${sp}, ATH${ath}, ST=${st}</p>`);
+}
+
+async function readVIN(){ const r=await send("0902"); const vin=decodeVIN(r); UI.id(`<p><b>VIN:</b> ${vin}</p>`); UI.repSetVIN(vin); }
+async function readPIDs(){ const r=await send("0100"); UI.id(`<p><b>PIDs 01-20 soportados:</b> ${r.replace(/\\r|>/g," ").trim()}</p>`); }
+async function readMil(){ const h=decodeMil(await send("0101")); UI.show(h); UI.rep(`<h3>MIL & Monitores</h3>${h}`); }
+async function read03(){ renderDTC("DTC almacenados (03)", decodeDTC(await send("03"),"43")); }
+async function read07(){ renderDTC("DTC pendientes (07)", decodeDTC(await send("07"),"47")); }
+async function read0A(){ renderDTC("DTC permanentes (0A)", decodeDTC(await send("0A"),"4A")); }
+async function clearDTC(){ if(confirm("Borrar DTC (04). Motor apagado, ignición en ON. ¿Continuar?")){ await send("04"); UI.show("<p>Comando 04 enviado. Verifica MIL y vuelve a leer DTC.</p>"); UI.rep("<p><b>Borrado de DTC solicitado.</b></p>"); }}
+
+/* Freeze Frame */
+async function readFF(){
+  const pid=document.getElementById('ffPid').value.toUpperCase();
+  const r=await send("02"+pid);
+  const d=decodePID(r, "42 "+pid);
+  document.getElementById('ffOut').innerHTML = d ? `<p><b>${d.name}:</b> ${d.val.toFixed ? d.val.toFixed(2) : d.val} ${d.unit||""}</p>` : "<p class='small'>No se pudo decodificar.</p>";
+  if(d){ UI.rep(`<p>Freeze Frame — ${d.name}: <b>${d.val.toFixed?d.val.toFixed(2):d.val} ${d.unit||""}</b></p>`); }
+}
+async function scanFF(){
+  const pids=["01","03","04","05","06","07","0B","0C","0D","10","11","14"];
+  let out="<ul>"; for(const p of pids){ const r=await send("02"+p); const d=decodePID(r,"42 "+p); if(d){ out+=`<li>${d.name}: <b>${(d.val.toFixed?d.val.toFixed(2):d.val)} ${d.unit||""}</b></li>`; UI.rep(`<p>FF ${d.name}: <b>${(d.val.toFixed?d.val.toFixed(2):d.val)} ${d.unit||""}</b></p>`); } }
+  out+="</ul>"; document.getElementById('ffOut').innerHTML=out;
+}
+
+/* Live Data + gráfico simple */
+let liveTimer=null, liveSeries=[];
+const canvas=document.getElementById('chart'); const ctx=canvas.getContext('2d');
+function drawChart(){
+  const w=canvas.width=canvas.clientWidth, h=canvas.height=canvas.clientHeight;
+  ctx.clearRect(0,0,w,h);
+  ctx.strokeStyle="#223a5f"; ctx.beginPath(); ctx.moveTo(40,10); ctx.lineTo(40,h-20); ctx.lineTo(w-10,h-20); ctx.stroke();
+  if(liveSeries.length<2) return;
+  const max=Math.max(...liveSeries), min=Math.min(...liveSeries), span=(max-min)||1;
+  ctx.beginPath(); ctx.strokeStyle= getComputedStyle(document.documentElement).getPropertyValue('--acc').trim() || "#48c6ef";
+  liveSeries.forEach((v,i)=>{
+    const x=40 + (i*(w-60))/Math.max(1,(liveSeries.length-1));
+    const y=(h-20) - ((v-min)*(h-40)/span);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  ctx.fillStyle="#9ab"; ctx.fillText(`min ${fmt(min)}  max ${fmt(max)}`, 50, 20);
+}
+function fmt(n){ return (typeof n==="number" && n.toFixed) ? n.toFixed(1) : n; }
+async function liveTick(){
+  const sel=document.getElementById('liveSel').value; const r=await send(sel);
+  const map={"010C":"41 0C","010D":"41 0D","0105":"41 05","0110":"41 10","0111":"41 11"}; const key=map[sel];
+  const d=decodePID(r,key);
+  if(d){ liveSeries.push(+d.val); if(liveSeries.length>120) liveSeries.shift(); drawChart(); document.getElementById('liveOut').innerHTML=`${d.name}: <b>${fmt(+d.val)} ${d.unit||""}</b>`; UI.rep(`<p>Live ${d.name}: <b>${fmt(+d.val)} ${d.unit||""}</b></p>`); }
+}
+function startLive(){ if(liveTimer) return; liveSeries=[]; drawChart(); const iv=Math.max(200, parseInt(document.getElementById('liveInt').value||800,10)); liveTimer=setInterval(liveTick, iv); }
+function stopLive(){ if(liveTimer){clearInterval(liveTimer); liveTimer=null;} }
+
+/* CSV export (log crudo) */
+function exportCSV(){
+  const text = rawEl.textContent.replace(/\n/g,"\\r\\n");
+  const blob = new Blob([text],{type:"text/csv;charset=utf-8;"}); const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download="doctor_car_pro_obd_log.csv"; a.click(); URL.revokeObjectURL(url);
+}
+
+/* ====== Botones ====== */
+document.getElementById('btnUsb').addEventListener('click', async ()=>{
+  try{
+    if(!("serial" in navigator)) return UI.toast("Tu navegador no soporta Web Serial.");
+    await USB.open(); transport=USB; UI.toast("USB conectado. Inicializa el ELM.");
+  }catch(e){ UI.toast("Error USB: "+e); }
+});
+document.getElementById('btnBle').addEventListener('click', async ()=>{
+  try{
+    if(!("bluetooth" in navigator)) return UI.toast("Tu navegador no soporta Web Bluetooth.");
+    const ble=makeBle(); await ble.open(); transport=ble; UI.toast("BLE conectado. Inicializa el ELM.");
+  }catch(e){ UI.toast("Error BLE: "+e); }
+});
+document.getElementById('btnDisc').addEventListener('click', async ()=>{ try{ await transport?.close(); transport=null; UI.toast("Desconectado."); }catch(e){} });
+document.getElementById('btnSim').addEventListener('click', ()=>{
+  if(transport?.type==="sim"){ transport=null; document.getElementById('btnSim').textContent="Simulador: Off"; UI.toast("Simulador desactivado."); return; }
+  transport=Sim; document.getElementById('btnSim').textContent="Simulador: On"; UI.toast("Simulador activado.");
+});
+document.getElementById('btnInit').addEventListener('click', initElm);
+document.getElementById('btnVIN').addEventListener('click', readVIN);
+document.getElementById('btnPIDs').addEventListener('click', readPIDs);
+document.getElementById('btnMil').addEventListener('click', readMil);
+document.getElementById('btn03').addEventListener('click', read03);
+document.getElementById('btn07').addEventListener('click', read07);
+document.getElementById('btn0A').addEventListener('click', read0A);
+document.getElementById('btn04').addEventListener('click', clearDTC);
+document.getElementById('btnFF').addEventListener('click', readFF);
+document.getElementById('btnFFScan').addEventListener('click', scanFF);
+document.getElementById('liveStart').addEventListener('click', startLive);
+document.getElementById('liveStop').addEventListener('click', stopLive);
+document.getElementById('btnPrint').addEventListener('click', ()=>window.print());
+document.getElementById('btnCsv').addEventListener('click', exportCSV);
+document.getElementById('btnAddNote').addEventListener('click', ()=>{ const t=prompt("Nota para el reporte:"); if(t) UI.rep(`<p>• ${t}</p>`); });
+document.getElementById('btnClearReport').addEventListener('click', ()=>{ document.getElementById('repBody').innerHTML=""; UI.repDate(); });
+</script>
+</body>
+</html>
