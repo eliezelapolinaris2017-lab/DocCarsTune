@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Doctor Car Pro — Decodificador VIN</title>
+<meta name="theme-color" content="#0d0f15">
+<style>
+  :root{
+    --bg:#0d1117; --panel:#0f1722; --panel-alpha:rgba(15,23,34,.75);
+    --ink:#e6edf3; --muted:#9fb0c0; --line:#203042;
+    --accent:#e44747; --accent2:#ff6b6b; --ok:#22c55e; --warn:#f59e0b; --danger:#ef4444;
+    --radius:14px; --gap:14px; --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg) center/cover fixed no-repeat;
+    color:var(--ink); font:15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  }
+  /* Fondo transparente opcional para poner imagen detrás */
+  body.bg-image::before{
+    content:""; position:fixed; inset:0; background:url('') center/cover no-repeat; opacity:.18; pointer-events:none;
+  }
+  header{
+    position:sticky; top:0; z-index:5; backdrop-filter:saturate(1.2) blur(6px);
+    background:linear-gradient(180deg, rgba(13,17,23,.9), rgba(13,17,23,.4));
+    border-bottom:1px solid #172335; padding:10px 16px;
+    display:flex; align-items:center; gap:12px;
+  }
+  .logo{
+    width:36px; height:36px; border-radius:10px; background:#1a2636; display:grid; place-items:center;
+    font-weight:800; letter-spacing:.5px; color:#fff; box-shadow:inset 0 0 0 1px #2a3a52;
+  }
+  .brand{font-weight:700}
+  main{max-width:980px; margin:20px auto; padding:0 14px 40px}
+  .card{
+    background:var(--panel-alpha); border:1px solid #1f2b3b; border-radius:var(--radius); box-shadow:var(--shadow);
+    padding:16px; display:grid; gap:14px;
+  }
+  .row{display:flex; gap:10px; flex-wrap:wrap}
+  .row > *{flex:1 1 240px}
+  input[type=text]{
+    width:100%; padding:14px 12px; border-radius:12px; outline:none;
+    background:#0d1520; color:var(--ink); border:1px solid #22344a;
+    font-weight:600; letter-spacing:.12em; text-transform:uppercase;
+  }
+  .help{color:var(--muted); font-size:.9rem}
+  .btn{
+    appearance:none; border:none; border-radius:12px; padding:12px 14px; cursor:pointer; font-weight:700;
+    background:linear-gradient(180deg, var(--accent), var(--accent2)); color:#fff; box-shadow:0 6px 20px rgba(228,71,71,.35);
+  }
+  .btn.alt{background:#162538; color:#cfe3ff; box-shadow:none; border:1px solid #29405b}
+  .btn.ghost{background:transparent; color:#cfe3ff; border:1px dashed #355170}
+  .bad{color:var(--danger); font-weight:700}
+  .ok{color:var(--ok); font-weight:700}
+  .grid{display:grid; gap:10px}
+  .grid.cols-2{grid-template-columns:repeat(2, minmax(0,1fr))}
+  .grid.cols-3{grid-template-columns:repeat(3, minmax(0,1fr))}
+  .kv{
+    background:#0c1522; border:1px solid #1e3148; border-radius:10px; padding:10px 12px;
+  }
+  .kv h4{margin:0 0 6px; font-size:.95rem; color:#cfe3ff; font-weight:700}
+  .kv p{margin:0; color:#c4d3e3; font-size:.95rem; word-break:break-word}
+  .footer{color:#8aa3bb; font-size:.85rem; text-align:center; margin-top:16px}
+  .bar{display:flex; gap:8px; flex-wrap:wrap}
+  .chip{
+    background:#132236; border:1px solid #244061; color:#cfe3ff; padding:8px 10px; border-radius:999px; font-weight:600; font-size:.88rem;
+  }
+  .print-hide{display:inline-flex; gap:8px}
+  @media print{
+    header,.print-hide{display:none !important}
+    body{background:#fff}
+    .card{border-color:#e5e7eb; background:#fff; color:#111}
+    .kv{background:#fff; border-color:#e5e7eb}
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo">DCP</div>
+    <div class="brand">Doctor Car Pro — VIN Decoder</div>
+    <div style="flex:1"></div>
+    <button class="btn alt" id="btnVolver" title="Volver al menú">⟵ Volver al menú</button>
+    <button class="btn ghost" id="btnPrint" title="Imprimir/Guardar PDF">🖨️ PDF</button>
+  </header>
+
+  <main>
+    <section class="card" id="vinCard">
+      <div class="row">
+        <div>
+          <label for="vin"><b>VIN (17 caracteres)</b></label>
+          <input id="vin" type="text" placeholder="Ej: 1HGCM82633A004352" maxlength="17" autocomplete="off" spellcheck="false">
+          <div class="help">Se admiten 0–9 y A–Z (sin I, O, Q). Calcula y verifica el dígito de control automáticamente.</div>
+        </div>
+      </div>
+      <div class="bar">
+        <button class="btn" id="btnDecode">Decodificar VIN</button>
+        <button class="btn alt" id="btnClear">Limpiar</button>
+        <button class="btn ghost" id="btnToggleBg">Fondo transparente</button>
+      </div>
+
+      <div id="status"></div>
+
+      <div class="grid cols-3" id="basicInfo"></div>
+      <div class="grid cols-2" id="sections"></div>
+
+      <div class="footer">© Oasis Air Cleaner Services LLC — Doctor Car Pro</div>
+    </section>
+  </main>
+
+<script>
+/* ===================== Utilidades VIN ISO 3779 ===================== */
+const translit = {
+  A:1,B:2,C:3,D:4,E:5,F:6,G:7,H:8,    J:1,K:2,L:3,M:4,N:5,      P:7,      R:9,
+  S:2,T:3,U:4,V:5,W:6,X:7,Y:8,Z:9,
+  '0':0,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9
+};
+const weights = [8,7,6,5,4,3,2,10,0,9,8,7,6,5,4,3,2];
+
+// Map de año de modelo (carácter 10)
+const yearMap = (() => {
+  const seq = "ABCDEFGHJKLMNPRSTVWXY123456789"; // sin I O Q U Z
+  const map = {};
+  let year = 1980;
+  // Dos ciclos (1980–2009 y 2010–2039)
+  for (let cycle = 0; cycle < 2; cycle++){
+    for (const ch of seq){
+      map[ch] = year++;
+    }
+  }
+  return map;
+})();
+
+// Tabla WMI (ampliable). Cobertura US/PR/JPN principales.
+const WMI = [
+  // Honda
+  {wmi:"1HG", make:"Honda", country:"USA", region:"Norteamérica"},
+  {wmi:"2HG", make:"Honda", country:"Canadá", region:"Norteamérica"},
+  {wmi:"JHM", make:"Honda", country:"Japón", region:"Asia"},
+  // Toyota
+  {wmi:"1NX", make:"Toyota", country:"USA", region:"Norteamérica"},
+  {wmi:"2T",  make:"Toyota", country:"Canadá", region:"Norteamérica"},
+  {wmi:"3T",  make:"Toyota", country:"México", region:"Norteamérica"},
+  {wmi:"JTD", make:"Toyota", country:"Japón", region:"Asia"},
+  {wmi:"JT",  make:"Toyota", country:"Japón", region:"Asia"},
+  // Nissan
+  {wmi:"1N4", make:"Nissan", country:"USA", region:"Norteamérica"},
+  {wmi:"3N",  make:"Nissan", country:"México", region:"Norteamérica"},
+  {wmi:"JN",  make:"Nissan", country:"Japón", region:"Asia"},
+  // Ford / GM / FCA
+  {wmi:"1FA", make:"Ford", country:"USA", region:"Norteamérica"},
+  {wmi:"1FB", make:"Ford", country:"USA", region:"Norteamérica"},
+  {wmi:"1FM", make:"Ford", country:"USA", region:"Norteamérica"},
+  {wmi:"1G",  make:"General Motors", country:"USA", region:"Norteamérica"},
+  {wmi:"2G",  make:"General Motors", country:"Canadá", region:"Norteamérica"},
+  {wmi:"1C4", make:"Chrysler/Dodge/Jeep", country:"USA", region:"Norteamérica"},
+  // Tesla
+  {wmi:"5YJ", make:"Tesla", country:"USA", region:"Norteamérica"},
+  // Subaru / Mazda / Mitsubishi
+  {wmi:"JF", make:"Subaru", country:"Japón", region:"Asia"},
+  {wmi:"JM", make:"Mazda", country:"Japón", region:"Asia"},
+  {wmi:"JA", make:"Mitsubishi", country:"Japón", region:"Asia"},
+  // Hyundai / Kia
+  {wmi:"5NP", make:"Hyundai", country:"USA", region:"Norteamérica"},
+  {wmi:"KMH", make:"Hyundai", country:"Corea", region:"Asia"},
+  {wmi:"KNM", make:"Kia", country:"Corea", region:"Asia"},
+];
+
+function sanitizeVIN(s){ return (s||"").toUpperCase().replace(/[^A-Z0-9]/g,""); }
+
+function computeCheckDigit(vin){
+  let sum = 0;
+  for (let i=0;i<17;i++){
+    const ch = vin[i];
+    const val = translit[ch];
+    if (val === undefined) return null;
+    sum += val * weights[i];
+  }
+  const mod = sum % 11;
+  return mod === 10 ? 'X' : String(mod);
+}
+
+function validateVIN(vin){
+  if (vin.length !== 17) return {ok:false, reason:"El VIN debe tener 17 caracteres."};
+  if (/[IOQ]/.test(vin)) return {ok:false, reason:"No se permiten I, O, Q en un VIN válido."};
+  if (!/^[A-Z0-9]+$/.test(vin)) return {ok:false, reason:"Solo A–Z y 0–9."};
+  const expected = computeCheckDigit(vin);
+  if (expected === null) return {ok:false, reason:"Caracter inválido."};
+  const actual = vin[8];
+  if (actual !== expected) return {ok:false, reason:`Dígito de control inválido. Esperado ${expected}, encontrado ${actual}.`};
+  return {ok:true};
+}
+
+function decodeWMI(vin){
+  const w3 = vin.slice(0,3);
+  const w2 = vin.slice(0,2);
+  let match = WMI.find(x => w3.startsWith(x.wmi));
+  if (!match){
+    match = WMI.find(x => w2 === x.wmi); // por si hay WMI de 2 chars en tabla
+  }
+  return {
+    wmi: vin.slice(0,3),
+    make: match?.make || "Desconocido (amplía WMI.json)",
+    country: match?.country || inferCountryByRegion(vin[0]) || "—",
+    region: match?.region || inferRegion(vin[0]) || "—"
+  };
+}
+
+function inferRegion(firstChar){
+  // Regiones típicas por primer carácter
+  const c = firstChar;
+  if ("12345".includes(c)) return "Norteamérica";
+  if ("678".includes(c)) return "Oceanía/África";
+  if ("9".includes(c)) return "Sudamérica";
+  if ("J".includes(c)) return "Asia";
+  if ("S".includes(c)) return "Europa";
+  if ("K".includes(c)) return "Asia";
+  if ("W".includes(c)) return "Europa";
+  if ("Z".includes(c)) return "Europa";
+  return null;
+}
+function inferCountryByRegion(firstChar){
+  const c = firstChar;
+  if ("1".includes(c)) return "USA";
+  if ("2".includes(c)) return "Canadá";
+  if ("3".includes(c)) return "México";
+  if ("J".includes(c)) return "Japón";
+  if ("K".includes(c)) return "Corea";
+  if ("S".includes(c)) return "Reino Unido/Europa";
+  if ("W".includes(c)) return "Alemania";
+  if ("Z".includes(c)) return "Italia/Europa";
+  return null;
+}
+
+function decodeVIN(vinRaw){
+  const vin = sanitizeVIN(vinRaw);
+  const valid = validateVIN(vin);
+  const info = { vin, valid, messages:[] };
+  if (!valid.ok) return info;
+
+  const wmi = decodeWMI(vin);
+  const vds = vin.slice(3,9);     // 4–9: atributos
+  const vis = vin.slice(9);       // 10–17
+  const yearCode = vin[9];
+  const year = yearMap[yearCode] || "—";
+  const plant = vin[10] || "—";
+  const serial = vin.slice(11) || "—";
+
+  info.wmi = wmi;
+  info.vds = vds;
+  info.vis = vis;
+  info.yearCode = yearCode;
+  info.modelYear = year;
+  info.plant = plant;
+  info.serial = serial;
+
+  return info;
+}
+
+/* ===================== UI Lógica ===================== */
+const $ = sel => document.querySelector(sel);
+const basicInfo = $("#basicInfo");
+const sections = $("#sections");
+const status = $("#status");
+const vinInput = $("#vin");
+
+function kv(label, value){
+  return `<div class="kv"><h4>${label}</h4><p>${value ?? "—"}</p></div>`;
+}
+function chip(text, cls=""){ return `<span class="chip ${cls}">${text}</span>`; }
+
+function render(info){
+  basicInfo.innerHTML = "";
+  sections.innerHTML = "";
+  status.innerHTML = "";
+
+  if (!info.valid.ok){
+    status.innerHTML = `<div class="bad">✖ ${info.valid.reason}</div>`;
+    return;
+  } else {
+    status.innerHTML = `<div class="ok">✔ VIN válido (dígito de control correcto)</div>`;
+  }
+
+  // Básico
+  basicInfo.innerHTML = [
+    kv("VIN", info.vin),
+    kv("Fabricante (WMI)", `${info.wmi.make} — ${info.wmi.wmi}`),
+    kv("País/Región", `${info.wmi.country} / ${info.wmi.region}`)
+  ].join("");
+
+  // Secciones
+  const left = [
+    kv("VDS (4–9)", info.vds),
+    kv("VIS (10–17)", info.vis),
+    kv("Año de modelo (pos. 10)", `${info.modelYear} (código: ${info.yearCode})`),
+  ].join("");
+
+  const right = [
+    kv("Planta (pos. 11)", info.plant),
+    kv("Número de serie (12–17)", info.serial),
+    kv("Validación", chip("ISO 3779", ""))
+  ].join("");
+
+  sections.innerHTML = `
+    <div class="grid">${left}</div>
+    <div class="grid">${right}</div>
+  `;
+}
+
+/* ===================== Eventos ===================== */
+$("#btnDecode").addEventListener("click", () => {
+  const info = decodeVIN(vinInput.value);
+  render(info);
+});
+
+$("#btnClear").addEventListener("click", () => {
+  vinInput.value = "";
+  basicInfo.innerHTML = "";
+  sections.innerHTML = "";
+  status.innerHTML = "";
+  vinInput.focus();
+});
+
+$("#btnPrint").addEventListener("click", () => {
+  // Usa CSS @media print para vista limpia
+  window.print();
+});
+
+$("#btnToggleBg").addEventListener("click", (e) => {
+  document.body.classList.toggle("bg-image");
+  e.target.textContent = document.body.classList.contains("bg-image") ? "Fondo sólido" : "Fondo transparente";
+});
+
+$("#btnVolver").addEventListener("click", () => {
+  // Si estás dentro de la app SPA, dispara un evento o cambia de vista:
+  // window.dispatchEvent(new CustomEvent("nav:home"));
+  // O si es multipágina:
+  if (document.referrer) history.back();
+  else location.href = "index.html"; // ajusta al nombre de tu menú principal
+});
+
+// Enter para decodificar
+vinInput.addEventListener("keydown", e=>{
+  if(e.key==="Enter"){ $("#btnDecode").click(); }
+});
+
+// Tip rápido: autolimpieza de caracteres ilegales
+vinInput.addEventListener("input", e=>{
+  const cur = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"");
+  if (cur !== e.target.value) e.target.value = cur;
+});
+</script>
+</body>
+</html>
